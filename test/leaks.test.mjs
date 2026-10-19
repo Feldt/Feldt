@@ -85,3 +85,8 @@ test('M1.T0a: re: entries are case-sensitive, rei: ignore case, sub: matches glu
   assert.deepEqual(findHits('at /QZ/x', deny), [3]);
   assert.deepEqual(findHits(`host-x${FAKE}9.local`, deny), [4]);
 });
+
+test('M1.T0a: a multi-word entry wrapped across lines still matches', () => {
+  const deny = loadDenylist(fakeDenylist([`fix the ${FAKE} sync`]));
+  assert.deepEqual(findHits(`we fix the\n${FAKE}   sync today`, deny), [2]);
+});

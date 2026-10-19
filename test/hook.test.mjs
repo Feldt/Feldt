@@ -162,3 +162,40 @@ test('M1.T0a: rebasing a PR branch onto new upstream commits by other authors is
   const r = run('git', ['-C', clone, 'push', '-q', '-f', 'origin', 'pr'], { env });
   assert.equal(r.status, 0, r.stderr);
 });
+
+test('M1.T0a: a denylisted line added to an existing text file is refused', () => {
+  const { clone, remote, env } = setup();
+  commit(clone, 'notes.md', 'line one\nline two\n', {});
+  assert.equal(push(clone, env).status, 0);
+  commit(clone, 'notes.md', `line one\nline two\nnew line ${FAKE}\n`, {});
+  assert.notEqual(push(clone, env).status, 0);
+  assert.notEqual(remoteHead(remote), git(clone, ['rev-parse', 'HEAD']).trim());
+});
+
+test('M1.T0a: --check-clone notices a hooksPath set after install, a stale scanner copy, and a personal email', () => {
+  const { clone } = setup();
+  const check = () => run('node', [join(ROOT, 'scripts', 'leaks.mjs'), '--check-clone', clone], { env: { LEAKS_DENYLIST: fakeDenylist() } });
+  assert.equal(check().status, 0, check().stderr);
+  git(clone, ['config', 'core.hooksPath', '.husky']);
+  assert.match(check().stderr, /hook not active/);
+  git(clone, ['config', '--unset', 'core.hooksPath']);
+  const copy = join(git(clone, ['rev-parse', '--git-common-dir']).trim(), 'hooks', 'leaks.mjs');
+  writeFileSync(copy.startsWith('/') ? copy : join(clone, copy), '// neutered\n');
+  assert.match(check().stderr, /out of date/);
+  assert.equal(run('node', [INSTALL, clone]).status, 0);
+  git(clone, ['config', 'user.email', 'fred@example.com']);
+  assert.match(check().stderr, /user\.email/);
+});
+
+test('M1.T0a: a force push over a remote tip we never fetched is scanned, not crashed', () => {
+  const { clone, remote, env } = setup();
+  commit(clone, 'a.txt', 'clean\n', {});
+  assert.equal(push(clone, env).status, 0);
+  const other = join(tmp('other-'), 'o');
+  git(tmp(), ['clone', '-q', remote, other]);
+  commit(other, 'b.txt', 'maintainer edit\n');
+  git(other, ['push', '-q', '--no-verify', 'origin', 'HEAD:main']);
+  commit(clone, 'c.txt', 'my edit\n', {});
+  const r = run('git', ['-C', clone, 'push', '-q', '-f', 'origin', 'HEAD:main'], { env });
+  assert.equal(r.status, 0, r.stderr);
+});

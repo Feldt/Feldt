@@ -7,6 +7,7 @@
 //   leaks.mjs --stdin                 scan stdin
 //   leaks.mjs --history <repo> [--not-remote <name>]   every branch: added lines, blobs, messages, identities
 //   leaks.mjs --pre-push <remote> <url>   git pre-push hook mode (refs on stdin)
+//   leaks.mjs --check-clone <dir>    is this clone's hook active, current and its identity noreply?
 //   leaks.mjs --all                   run repos, oss clones, forks, PR text, Action logs
 // Exit 0 clean, 1 leak, 2 bad input or no denylist.
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
@@ -21,6 +22,9 @@ const OK_EMAIL = /(@users\.noreply\.github\.com|^noreply@github\.com)$/i;
 
 // Denylist lines: a literal matches case-insensitively where it isn't glued to other letters or digits;
 // `sub:` matches anywhere (usernames, hostnames); `re:` is a case-sensitive regex, `rei:` ignores case.
+// Lower case with whitespace runs (line wraps included) collapsed, so a phrase wrapped across lines still matches.
+const squash = (t) => t.toLowerCase().replace(/\s+/gu, ' ');
+
 export function loadDenylist(path = process.env.LEAKS_DENYLIST || join(RUN_DIR, 'denylist.txt')) {
   if (!existsSync(path)) throw new Error(`denylist not found: ${path}`);
   const lits = [], subs = [], res = [];
@@ -29,8 +33,8 @@ export function loadDenylist(path = process.env.LEAKS_DENYLIST || join(RUN_DIR, 
     if (!line || line.startsWith('#')) return;
     if (line.startsWith('rei:')) res.push({ n, re: new RegExp(line.slice(4), 'iu') });
     else if (line.startsWith('re:')) res.push({ n, re: new RegExp(line.slice(3), 'u') });
-    else if (line.startsWith('sub:')) subs.push({ n, s: line.slice(4).toLowerCase() });
-    else lits.push({ n, s: line.toLowerCase() });
+    else if (line.startsWith('sub:')) subs.push({ n, s: squash(line.slice(4)) });
+    else lits.push({ n, s: squash(line) });
   });
   return { lits, subs, res };
 }
@@ -39,7 +43,7 @@ const isWord = (c) => c !== undefined && /[\p{L}\p{N}]/u.test(c);
 
 // Returns denylist line numbers found in text.
 export function findHits(text, deny) {
-  const lower = text.toLowerCase(), hits = new Set();
+  const lower = squash(text), hits = new Set();
   for (const { n, s } of deny.lits) {
     let at = lower.indexOf(s);
     while (at !== -1) {
@@ -68,6 +72,7 @@ const isText = (buf) => !buf.includes(0) && Buffer.from(buf.toString('utf8'), 'u
 const bufHits = (buf, deny) => [...new Set(decodings(buf).flatMap((t) => findHits(t, deny)))].sort((a, b) => a - b);
 
 const git = (dir, args, input) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', maxBuffer: 1 << 30, input });
+const run0 = (dir, args) => { try { execFileSync('git', ['-C', dir, ...args], { stdio: 'ignore' }); return true; } catch { return false; } };
 const gitBuf = (dir, args) => execFileSync('git', ['-C', dir, ...args], { maxBuffer: 1 << 30 });
 const EMPTY = /^0+$/;
 
@@ -167,7 +172,9 @@ export function prePush(dir, refLines, deny, remote = '') {
       for (const n of bufHits(gitBuf(dir, ['cat-file', '-p', target]), deny)) problems.push(`${remoteRef}: object denylist line ${n}`);
       continue;
     }
-    const rev = [target, '--not', ...known, ...(ZERO.test(remoteSha) ? [] : [remoteSha])];
+    // a remote tip we never fetched (e.g. a maintainer's edit to a PR branch) can't be excluded locally
+    const haveRemote = !ZERO.test(remoteSha) && run0(dir, ['cat-file', '-e', `${remoteSha}^{commit}`]);
+    const rev = [target, '--not', ...known, ...(haveRemote ? [remoteSha] : [])];
     problems.push(...scanCommits(dir, rev, deny, remoteRef));
   }
   return problems;
@@ -178,6 +185,20 @@ const ghJson = (args) => JSON.parse(gh(args) || 'null');
 
 function textHits(label, text, deny) { return findHits(text || '', deny).map((n) => `${label}: denylist line ${n}`); }
 
+// Is this clone really guarded? Uses git's own effective hooks dir (so a core.hooksPath set later,
+// e.g. by husky on npm install, shows up), and the hook's scanner copy must match the current one.
+export function checkClone(d) {
+  const problems = [];
+  let hooks = git(d, ['rev-parse', '--git-path', 'hooks']).trim();
+  if (!isAbsolute(hooks)) hooks = join(d, hooks);
+  const hook = join(hooks, 'pre-push'), copy = join(hooks, 'leaks.mjs');
+  if (!existsSync(hook) || !readFileSync(hook, 'utf8').includes('installed by install-hooks.mjs')) problems.push('pre-push hook not active (core.hooksPath changed, or install-hooks.mjs not run)');
+  else if (!existsSync(copy) || !readFileSync(copy).equals(readFileSync(fileURLToPath(import.meta.url)))) problems.push("the hook's scanner copy is out of date (re-run install-hooks.mjs)");
+  let email = ''; try { email = git(d, ['config', 'user.email']).trim(); } catch {}
+  if (!OK_EMAIL.test(email)) problems.push('user.email is not the noreply address');
+  return problems;
+}
+
 // Everything this run made public. Older public repos are reported, not gated.
 export function scanAll(deny, { here = dirname(dirname(fileURLToPath(import.meta.url))) } = {}) {
   const gated = [], reported = [];
@@ -186,11 +207,7 @@ export function scanAll(deny, { here = dirname(dirname(fileURLToPath(import.meta
   if (existsSync(clones)) for (const c of readdirSync(clones)) {
     const d = join(clones, c);
     if (!existsSync(join(d, '.git'))) continue;
-    const common = git(d, ['rev-parse', '--git-common-dir']).trim();
-    const hooks = join(isAbsolute(common) ? common : join(d, common), 'hooks');
-    const hook = join(hooks, 'pre-push');
-    if (!existsSync(hook) || !readFileSync(hook, 'utf8').includes('installed by install-hooks.mjs')) gated.push(`${c}: pre-push hook not installed (run install-hooks.mjs)`);
-    if (!OK_EMAIL.test(git(d, ['config', 'user.email']).trim())) gated.push(`${c}: user.email is not the noreply address`);
+    gated.push(...checkClone(d).map((p) => `${c}: ${p}`));
     const remotes = git(d, ['remote']).split('\n');
     const not = remotes.includes('upstream') ? ['--not', '--remotes=upstream'] : ['--not', '--remotes'];
     gated.push(...scanCommits(d, ['--branches', ...(remotes.includes('origin') ? ['--remotes=origin'] : []), ...not], deny, c));
@@ -246,6 +263,7 @@ function main(argv) {
     const not = args.indexOf('--not-remote');
     problems = scanCommits(dir, not > 0 ? ['--all', '--not', `--remotes=${args[not + 1]}`] : ['--all'], deny);
   } else if (args[0] === '--pre-push') problems = prePush(process.cwd(), readFileSync(0, 'utf8'), deny, args[1]);
+  else if (args[0] === '--check-clone') { if (!args[1]) return usage(); problems = checkClone(resolve(args[1])); }
   else if (args[0] === '--all') {
     const { gated, reported } = scanAll(deny);
     for (const r of reported) console.log(`report (older repo, not gated): ${r}`);
