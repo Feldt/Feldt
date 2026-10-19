@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodePng } from '../scripts/spike.mjs';
+import { tmp, run } from './helpers.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const profile = () => JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
@@ -99,7 +100,9 @@ test('M1.T3: the animated SVG stores the base once and each frame as its changed
     assert.ok(g, `group for ${f.id}`);
     assert.equal([...g[1].matchAll(/<text /g)].length, m.deltaRows(l.base, f.grid).length, `${f.id} carries only its changed rows`);
   }
-  const steps = Number(s.match(/steps\((\d+)/)[1]);
-  assert.ok(steps >= 8);
+  const float = s.match(/@keyframes float\{(.*?)\}\}/)[1];
+  const steps = new Set([...float.matchAll(/%\{transform:([^}]+)/g)].map((m) => m[0])).size;
+  assert.ok([...float.matchAll(/%\{/g)].length >= 9, 'at least 8 keyframe steps plus the seam');
+  assert.ok(steps >= 1);
   assert.match(s, /prefers-reduced-motion/);
 });

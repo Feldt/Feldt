@@ -1,0 +1,79 @@
+{
+ "cols": 96,
+ "rows": 51,
+ "colours": 29,
+ "steps": 16,
+ "stepSeconds": 0.18,
+ "timeline": [
+  {
+   "frame": null,
+   "dy": 0
+  },
+  {
+   "frame": "f1",
+   "dy": 1
+  },
+  {
+   "frame": "f2",
+   "dy": 2
+  },
+  {
+   "frame": "f1",
+   "dy": 3
+  },
+  {
+   "frame": null,
+   "dy": 3
+  },
+  {
+   "frame": "f1",
+   "dy": 2
+  },
+  {
+   "frame": "f2",
+   "dy": 1
+  },
+  {
+   "frame": "f1",
+   "dy": 0
+  },
+  {
+   "frame": null,
+   "dy": 0
+  },
+  {
+   "frame": null,
+   "dy": 1
+  },
+  {
+   "frame": null,
+   "dy": 2
+  },
+  {
+   "frame": "f3",
+   "dy": 3
+  },
+  {
+   "frame": null,
+   "dy": 3
+  },
+  {
+   "frame": null,
+   "dy": 2
+  },
+  {
+   "frame": null,
+   "dy": 1
+  },
+  {
+   "frame": null,
+   "dy": 0
+  }
+ ],
+ "deltaRows": {
+  "flap1": 14,
+  "flap2": 15,
+  "blink": 7
+ },
+ "bytes": 84866
+}
