@@ -1,0 +1,12 @@
+{
+  "frameBytes": 29285,
+  "frames": 12,
+  "fullCopyBytes": 340407,
+  "deltaBytes": 37027,
+  "blinkFrames": 2,
+  "eyeRowBytes": 3671,
+  "fits": true,
+  "cols": 72,
+  "rows": 38,
+  "colours": 26
+}
