@@ -27,7 +27,8 @@ test('M1.T2: the local frame source is the recorded file, with a transparent bac
   const { w, h, px } = decodePng(buf);
   assert.ok(w >= 384, `${w} px wide`);
   let clear = 0, solid = 0;
-  for (let i = 3; i < px.length; i += 4) { if (px[i] === 0) clear++; else if (px[i] >= 240) solid++; // lossy WebP alpha sits at ~252 }
+  // lossy WebP alpha sits at ~252 inside the Bud
+  for (let i = 3; i < px.length; i += 4) { if (px[i] === 0) clear++; else if (px[i] >= 240) solid++; }
   assert.ok(clear / (w * h) > 0.15, 'background is transparent');
   assert.ok(solid / (w * h) > 0.4, 'the Bud is opaque');
   assert.equal(px[3], 0, 'top-left corner is background');
