@@ -77,3 +77,11 @@ test('M1.T0a: the real denylist catches the local username, home paths and LAN h
 test('M1.T0a: this repo has no denylisted strings', { skip: !existsSync(REAL) && 'no run-folder denylist on this machine' }, () => {
   assert.deepEqual(scanFiles([ROOT], loadDenylist(REAL)), []);
 });
+
+test('M1.T0a: re: entries are case-sensitive, rei: ignore case, sub: matches glued into other text', () => {
+  const deny = loadDenylist(fakeDenylist(['re:/Zq/', 'rei:/qz/', `sub:${FAKE}`]));
+  assert.deepEqual(findHits('GET /zq/Feldt', deny), []);
+  assert.deepEqual(findHits('at /Zq/x', deny), [2]);
+  assert.deepEqual(findHits('at /QZ/x', deny), [3]);
+  assert.deepEqual(findHits(`host-x${FAKE}9.local`, deny), [4]);
+});

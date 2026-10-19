@@ -5,30 +5,34 @@
 //
 //   leaks.mjs <file|dir>...           scan files (a git dir scans its tracked files)
 //   leaks.mjs --stdin                 scan stdin
-//   leaks.mjs --history <repo> [--not-remote <name>]   every branch: patches, messages, identities
+//   leaks.mjs --history <repo> [--not-remote <name>]   every branch: added lines, blobs, messages, identities
 //   leaks.mjs --pre-push <remote> <url>   git pre-push hook mode (refs on stdin)
 //   leaks.mjs --all                   run repos, oss clones, forks, PR text, Action logs
 // Exit 0 clean, 1 leak, 2 bad input or no denylist.
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { join, resolve, dirname, relative, basename } from 'node:path';
+import { join, resolve, dirname, relative, basename, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const RUN_DIR = join(homedir(), '.claude', 'marathon', 'github-aura-20261019');
 const ZERO = /^0+$/;
 const OK_EMAIL = /(@users\.noreply\.github\.com|^noreply@github\.com)$/i;
 
+// Denylist lines: a literal matches case-insensitively where it isn't glued to other letters or digits;
+// `sub:` matches anywhere (usernames, hostnames); `re:` is a case-sensitive regex, `rei:` ignores case.
 export function loadDenylist(path = process.env.LEAKS_DENYLIST || join(RUN_DIR, 'denylist.txt')) {
   if (!existsSync(path)) throw new Error(`denylist not found: ${path}`);
-  const lits = [], res = [];
+  const lits = [], subs = [], res = [];
   readFileSync(path, 'utf8').split('\n').forEach((raw, i) => {
-    const line = raw.trim();
+    const line = raw.trim(), n = i + 1;
     if (!line || line.startsWith('#')) return;
-    if (line.startsWith('re:')) res.push({ n: i + 1, re: new RegExp(line.slice(3), 'iu') });
-    else lits.push({ n: i + 1, s: line.toLowerCase() });
+    if (line.startsWith('rei:')) res.push({ n, re: new RegExp(line.slice(4), 'iu') });
+    else if (line.startsWith('re:')) res.push({ n, re: new RegExp(line.slice(3), 'u') });
+    else if (line.startsWith('sub:')) subs.push({ n, s: line.slice(4).toLowerCase() });
+    else lits.push({ n, s: line.toLowerCase() });
   });
-  return { lits, res };
+  return { lits, subs, res };
 }
 
 const isWord = (c) => c !== undefined && /[\p{L}\p{N}]/u.test(c);
@@ -45,22 +49,76 @@ export function findHits(text, deny) {
       at = lower.indexOf(s, at + 1);
     }
   }
+  for (const { n, s } of deny.subs) if (lower.includes(s)) hits.add(n);
   for (const { n, re } of deny.res) if (re.test(text)) hits.add(n);
   return [...hits].sort((a, b) => a - b);
 }
 
-const git = (dir, args, input) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', maxBuffer: 1 << 30, input });
+// Every way a blob's bytes could read as text: UTF-8, UTF-16 (either order), and Latin-1.
+export function decodings(buf) {
+  const out = [buf.toString('utf8')];
+  if (buf.includes(0)) {
+    out.push(buf.toString('utf16le'));
+    const sw = Buffer.from(buf.subarray(0, buf.length - (buf.length % 2))); sw.swap16(); out.push(sw.toString('utf16le'));
+    out.push(buf.toString('latin1').replace(/\0/g, ''));
+  }
+  return out;
+}
+const isText = (buf) => !buf.includes(0) && Buffer.from(buf.toString('utf8'), 'utf8').equals(buf);
+const bufHits = (buf, deny) => [...new Set(decodings(buf).flatMap((t) => findHits(t, deny)))].sort((a, b) => a - b);
 
-// Scans commits selected by rev-list args: identity, message and patch.
+const git = (dir, args, input) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', maxBuffer: 1 << 30, input });
+const gitBuf = (dir, args) => execFileSync('git', ['-C', dir, ...args], { maxBuffer: 1 << 30 });
+const EMPTY = /^0+$/;
+
+// What a commit adds to the world: lines added to text files (not context or removed lines, which
+// were already public wherever the parent is), the whole of any non-text blob, and every new path.
+function addedContent(dir, sha) {
+  const parents = git(dir, ['show', '-s', '--format=%P', sha]).trim().split(' ').filter(Boolean);
+  // a merge only adds what differs from every parent (conflict resolutions)
+  const raw = parents.length > 1
+    ? git(dir, ['diff-tree', '-r', '-z', '--no-commit-id', '-c', '--no-renames', sha])
+    : git(dir, ['diff-tree', '-r', '-z', '--no-commit-id', '--root', '--no-renames', sha]);
+  const f = raw.split('\0'); const items = [];
+  for (let i = 0; i < f.length - 1; i += 2) {
+    const meta = f[i].replace(/^:+/, '').split(' '), path = f[i + 1];
+    const status = meta[meta.length - 1];
+    if (/^D+$/.test(status)) continue;
+    const shas = meta.filter((m) => /^[0-9a-f]{7,}$/.test(m));
+    const newSha = shas[shas.length - 1], oldSha = parents.length > 1 ? shas[0] : shas[0];
+    if (!newSha || EMPTY.test(newSha) || meta.includes('160000')) { items.push({ path }); continue; }
+    items.push({ path, newSha, oldSha: EMPTY.test(oldSha) || oldSha === newSha ? null : oldSha });
+  }
+  return items;
+}
+
 export function scanCommits(dir, revArgs, deny, label = dir) {
   const problems = [];
   const shas = git(dir, ['rev-list', ...revArgs]).split('\n').filter(Boolean);
   for (const sha of shas) {
+    const at = `${label} ${sha.slice(0, 7)}`;
     const [an, ae, cn, ce] = git(dir, ['show', '-s', '--format=%an%x00%ae%x00%cn%x00%ce', sha]).trim().split('\0');
-    if (!OK_EMAIL.test(ae)) problems.push(`${label} ${sha.slice(0, 7)}: author email is not a GitHub noreply address`);
-    if (!OK_EMAIL.test(ce)) problems.push(`${label} ${sha.slice(0, 7)}: committer email is not a GitHub noreply address`);
-    const body = `${an}\n${cn}\n` + git(dir, ['show', '--format=%B', '--patch', '--binary', '--no-color', sha]);
-    for (const n of findHits(body, deny)) problems.push(`${label} ${sha.slice(0, 7)}: denylist line ${n}`);
+    if (!OK_EMAIL.test(ae)) problems.push(`${at}: author email is not a GitHub noreply address`);
+    if (!OK_EMAIL.test(ce)) problems.push(`${at}: committer email is not a GitHub noreply address`);
+    const head = `${an}\n${ae}\n${cn}\n${ce}\n` + git(dir, ['show', '-s', '--format=%B', sha]);
+    for (const n of findHits(head, deny)) problems.push(`${at}: denylist line ${n} (message or identity)`);
+    for (const { path, newSha, oldSha } of addedContent(dir, sha)) {
+      for (const n of findHits(path, deny)) problems.push(`${at}: path matches denylist line ${n}`);
+      if (!newSha) continue;
+      const blob = gitBuf(dir, ['cat-file', 'blob', newSha]);
+      let hits;
+      if (!isText(blob) || !oldSha) hits = bufHits(blob, deny);
+      else {
+        const old = gitBuf(dir, ['cat-file', 'blob', oldSha]);
+        if (!isText(old)) hits = bufHits(blob, deny);
+        else {
+          const diff = git(dir, ['diff', '-U0', '--no-color', '--no-ext-diff', '--no-textconv', '--text', oldSha, newSha]);
+          const added = diff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++')).map((l) => l.slice(1)).join('\n');
+          hits = findHits(added, deny);
+        }
+      }
+      for (const n of hits) problems.push(`${at}: ${path}: denylist line ${n}`);
+    }
   }
   return problems;
 }
@@ -80,20 +138,37 @@ function walk(p, out = [], root = null) {
 export function scanFiles(paths, deny) {
   const problems = [];
   for (const [f, name] of paths.flatMap((p) => walk(resolve(p)))) {
-    for (const n of findHits(readFileSync(f, 'utf8'), deny)) problems.push(`${name}: denylist line ${n}`);
+    for (const n of bufHits(readFileSync(f), deny)) problems.push(`${name}: denylist line ${n}`);
     for (const n of findHits(name, deny)) problems.push(`${name}: path matches denylist line ${n}`);
   }
   return problems;
 }
 
-export function prePush(dir, refLines, deny) {
+// Pre-push: everything the push makes public that isn't public already. Public already means reachable
+// from the remote being pushed to, or from `upstream` (the public project an oss clone forks).
+// Other remotes may be private, so they prove nothing.
+export function prePush(dir, refLines, deny, remote = '') {
   const problems = [];
+  const remotes = git(dir, ['remote']).split('\n').filter(Boolean);
+  const known = ['upstream', remote].filter((r) => remotes.includes(r)).map((r) => `--remotes=${r}`);
   for (const line of refLines.split('\n').filter(Boolean)) {
     const [, localSha, remoteRef, remoteSha] = line.split(' ');
     if (ZERO.test(localSha)) continue; // deleting a remote ref publishes nothing
-    const rev = ZERO.test(remoteSha) ? [localSha, '--not', '--remotes'] : [`${remoteSha}..${localSha}`];
+    for (const n of findHits(remoteRef, deny)) problems.push(`${remoteRef}: ref name matches denylist line ${n}`);
+    let target = localSha;
+    while (git(dir, ['cat-file', '-t', target]).trim() === 'tag') {
+      const tag = git(dir, ['cat-file', 'tag', target]);
+      const tagger = (tag.match(/^tagger .*<([^>]*)>/m) || [])[1];
+      if (tagger !== undefined && !OK_EMAIL.test(tagger)) problems.push(`${remoteRef}: tagger email is not a GitHub noreply address`);
+      for (const n of findHits(tag, deny)) problems.push(`${remoteRef}: tag denylist line ${n}`);
+      target = (tag.match(/^object ([0-9a-f]+)/m) || [])[1];
+    }
+    if (git(dir, ['cat-file', '-t', target]).trim() !== 'commit') {
+      for (const n of bufHits(gitBuf(dir, ['cat-file', '-p', target]), deny)) problems.push(`${remoteRef}: object denylist line ${n}`);
+      continue;
+    }
+    const rev = [target, '--not', ...known, ...(ZERO.test(remoteSha) ? [] : [remoteSha])];
     problems.push(...scanCommits(dir, rev, deny, remoteRef));
-    for (const n of findHits(remoteRef, deny)) problems.push(`${remoteRef}: branch name matches denylist line ${n}`);
   }
   return problems;
 }
@@ -111,6 +186,11 @@ export function scanAll(deny, { here = dirname(dirname(fileURLToPath(import.meta
   if (existsSync(clones)) for (const c of readdirSync(clones)) {
     const d = join(clones, c);
     if (!existsSync(join(d, '.git'))) continue;
+    const common = git(d, ['rev-parse', '--git-common-dir']).trim();
+    const hooks = join(isAbsolute(common) ? common : join(d, common), 'hooks');
+    const hook = join(hooks, 'pre-push');
+    if (!existsSync(hook) || !readFileSync(hook, 'utf8').includes('installed by install-hooks.mjs')) gated.push(`${c}: pre-push hook not installed (run install-hooks.mjs)`);
+    if (!OK_EMAIL.test(git(d, ['config', 'user.email']).trim())) gated.push(`${c}: user.email is not the noreply address`);
     const remotes = git(d, ['remote']).split('\n');
     const not = remotes.includes('upstream') ? ['--not', '--remotes=upstream'] : ['--not', '--remotes'];
     gated.push(...scanCommits(d, ['--branches', ...(remotes.includes('origin') ? ['--remotes=origin'] : []), ...not], deny, c));
@@ -165,7 +245,7 @@ function main(argv) {
     const dir = args[1]; if (!dir) return usage();
     const not = args.indexOf('--not-remote');
     problems = scanCommits(dir, not > 0 ? ['--all', '--not', `--remotes=${args[not + 1]}`] : ['--all'], deny);
-  } else if (args[0] === '--pre-push') problems = prePush(process.cwd(), readFileSync(0, 'utf8'), deny);
+  } else if (args[0] === '--pre-push') problems = prePush(process.cwd(), readFileSync(0, 'utf8'), deny, args[1]);
   else if (args[0] === '--all') {
     const { gated, reported } = scanAll(deny);
     for (const r of reported) console.log(`report (older repo, not gated): ${r}`);

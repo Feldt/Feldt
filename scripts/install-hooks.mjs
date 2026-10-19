@@ -2,12 +2,13 @@
 // install-hooks.mjs <clone>: sets the Feldt noreply identity on the clone and installs a pre-push
 // hook that runs leaks.mjs (denylist + identity) on every commit about to be published.
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, chmodSync, mkdirSync } from 'node:fs';
+import { writeFileSync, chmodSync, mkdirSync, copyFileSync } from 'node:fs';
 import { join, resolve, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const NAME = 'Feldt';
 export const EMAIL = '204218226+Feldt@users.noreply.github.com';
+export const MARKER = 'installed by install-hooks.mjs';
 const LEAKS = join(dirname(fileURLToPath(import.meta.url)), 'leaks.mjs');
 
 export function installHooks(clone) {
@@ -21,8 +22,10 @@ export function installHooks(clone) {
   if (!isAbsolute(common)) common = join(dir, common);
   const hooks = join(common, 'hooks');
   mkdirSync(hooks, { recursive: true });
+  // the hook carries its own copy of the scanner, so it keeps working if this checkout moves
+  copyFileSync(LEAKS, join(hooks, 'leaks.mjs'));
   const hook = join(hooks, 'pre-push');
-  writeFileSync(hook, `#!/bin/sh\n# installed by install-hooks.mjs\nexec node "${LEAKS}" --pre-push "$@"\n`);
+  writeFileSync(hook, `#!/bin/sh\n# ${MARKER}\nexec node "$(dirname "$0")/leaks.mjs" --pre-push "$@"\n`);
   chmodSync(hook, 0o755);
   return hook;
 }
