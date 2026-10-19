@@ -12,7 +12,7 @@
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, relative, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const RUN_DIR = join(homedir(), '.claude', 'marathon', 'github-aura-20261019');
@@ -65,22 +65,23 @@ export function scanCommits(dir, revArgs, deny, label = dir) {
   return problems;
 }
 
-function walk(p, out = []) {
+// Returns [absolute path, path as published]: a repo's files are named relative to the repo root.
+function walk(p, out = [], root = null) {
   const st = statSync(p);
-  if (st.isFile()) { out.push(p); return out; }
+  if (st.isFile()) { out.push([p, root ? relative(root, p) : basename(p)]); return out; }
   if (existsSync(join(p, '.git'))) {
-    for (const f of git(p, ['ls-files', '-z']).split('\0').filter(Boolean)) if (existsSync(join(p, f))) out.push(join(p, f));
+    for (const f of git(p, ['ls-files', '-z']).split('\0').filter(Boolean)) if (existsSync(join(p, f))) out.push([join(p, f), f]);
     return out;
   }
-  for (const e of readdirSync(p)) if (e !== '.git' && e !== 'node_modules') walk(join(p, e), out);
+  for (const e of readdirSync(p)) if (e !== '.git' && e !== 'node_modules') walk(join(p, e), out, root || p);
   return out;
 }
 
 export function scanFiles(paths, deny) {
   const problems = [];
-  for (const f of paths.flatMap((p) => walk(resolve(p)))) {
-    for (const n of findHits(readFileSync(f, 'utf8'), deny)) problems.push(`${f}: denylist line ${n}`);
-    if (findHits(f, deny).length) problems.push(`${f}: path matches the denylist`);
+  for (const [f, name] of paths.flatMap((p) => walk(resolve(p)))) {
+    for (const n of findHits(readFileSync(f, 'utf8'), deny)) problems.push(`${name}: denylist line ${n}`);
+    for (const n of findHits(name, deny)) problems.push(`${name}: path matches denylist line ${n}`);
   }
   return problems;
 }

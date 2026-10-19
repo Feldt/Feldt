@@ -68,7 +68,7 @@ test('M1.T0a: the denylist lives outside the repo', () => {
 });
 
 const REAL = join(homedir(), '.claude', 'marathon', 'github-aura-20261019', 'denylist.txt');
-test('M1.T0a: the real denylist catches the local username, home paths and .lan hosts', { skip: !existsSync(REAL) && 'no run-folder denylist on this machine' }, () => {
+test('M1.T0a: the real denylist catches the local username, home paths and LAN hostnames', { skip: !existsSync(REAL) && 'no run-folder denylist on this machine' }, () => {
   const deny = loadDenylist(REAL);
   for (const s of ['by ' + 'allan' + 'feldt', 'at /Use' + 'rs/x/y', 'ssh mac.l' + 'an']) assert.ok(findHits(s, deny).length, `should catch a planted ${s.length}-char sample`);
   assert.ok(deny.lits.length > 20, 'private repo names and PR titles are listed');
