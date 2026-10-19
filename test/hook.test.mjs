@@ -21,11 +21,11 @@ function setup() {
 const push = (c, env, ...ref) => run('git', ['-C', c, 'push', '-q', 'origin', ...(ref.length ? ref : ['HEAD:main'])], { env });
 const remoteHead = (remote, ref = 'main') => run('git', ['-C', remote, 'rev-parse', '--verify', '-q', ref]).stdout.trim();
 
-test('M1.T0a: install-hooks sets the noreply identity and removes a bypassing hooksPath', () => {
+test('M1.T0a: install-hooks sets the noreply identity and points core.hooksPath at its own hooks', () => {
   const { clone } = setup();
   assert.equal(git(clone, ['config', 'user.email']).trim(), '204218226+Feldt@users.noreply.github.com');
   assert.equal(git(clone, ['config', 'user.name']).trim(), 'Feldt');
-  assert.equal(run('git', ['-C', clone, 'config', 'core.hooksPath']).status, 1);
+  assert.match(git(clone, ['config', 'core.hooksPath']).trim(), /aura-hooks$/);
 });
 
 test('M1.T0a: a clean push goes through', () => {
@@ -178,8 +178,9 @@ test('M1.T0a: --check-clone notices a hooksPath set after install, a stale scann
   assert.equal(check().status, 0, check().stderr);
   git(clone, ['config', 'core.hooksPath', '.husky']);
   assert.match(check().stderr, /hook not active/);
-  git(clone, ['config', '--unset', 'core.hooksPath']);
-  const copy = join(git(clone, ['rev-parse', '--git-common-dir']).trim(), 'hooks', 'leaks.mjs');
+  assert.equal(run('node', [INSTALL, clone]).status, 0);
+  assert.equal(check().status, 0, check().stderr);
+  const copy = join(git(clone, ['rev-parse', '--git-common-dir']).trim(), 'aura-hooks', 'leaks.mjs');
   writeFileSync(copy.startsWith('/') ? copy : join(clone, copy), '// neutered\n');
   assert.match(check().stderr, /out of date/);
   assert.equal(run('node', [INSTALL, clone]).status, 0);
