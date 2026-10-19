@@ -7,11 +7,12 @@
 //   leaks.mjs --stdin                 scan stdin
 //   leaks.mjs --history <repo> [--not-remote <name>]   every branch: added lines, blobs, messages, identities
 //   leaks.mjs --pre-push <remote> <url>   git pre-push hook mode (refs on stdin)
+//   leaks.mjs --gate get              credential-helper mode (installed by install-hooks.mjs)
 //   leaks.mjs --check-clone <dir>    is this clone's hook active, current and its identity noreply?
 //   leaks.mjs --all                   run repos, oss clones, forks, PR text, Action logs
 // Exit 0 clean, 1 leak, 2 bad input or no denylist.
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join, resolve, dirname, relative, basename, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -97,16 +98,50 @@ function addedContent(dir, sha) {
   return items;
 }
 
-export function scanCommits(dir, revArgs, deny, label = dir) {
+// Remotes whose refs count as already public: the one being pushed to, and the recorded upstream
+// while its URL is still the one install-hooks.mjs saw (a remote's name alone proves nothing).
+export function trustedRemotes(dir, pushRemote = '') {
+  const remotes = git(dir, ['remote']).split('\n').filter(Boolean);
+  const cfg = (k) => { try { return git(dir, ['config', k]).trim(); } catch { return ''; } };
+  const out = [];
+  if (remotes.includes(pushRemote)) out.push(pushRemote);
+  const up = cfg('aura.upstream');
+  if (up && remotes.includes(up) && cfg(`remote.${up}.url`) === cfg('aura.upstreamUrl') && !out.includes(up)) out.push(up);
+  return out;
+}
+
+// Raw commit objects in one `git cat-file --batch` call.
+function readCommits(dir, shas) {
+  if (!shas.length) return [];
+  const buf = execFileSync('git', ['-C', dir, 'cat-file', '--batch'], { input: shas.join('\n') + '\n', maxBuffer: 1 << 30 });
+  const out = []; let at = 0;
+  while (at < buf.length) {
+    const nl = buf.indexOf(10, at); const [sha, , size] = buf.subarray(at, nl).toString().split(' ');
+    const body = buf.subarray(nl + 1, nl + 1 + Number(size)); at = nl + 1 + Number(size) + 1;
+    out.push({ sha, raw: body.toString('utf8') });
+  }
+  return out;
+}
+
+// Scans commits selected by rev-list args. A non-noreply author/committer passes only when that exact
+// address is already public on a trusted remote (a cherry-picked upstream commit), never for new work.
+export function scanCommits(dir, revArgs, deny, label = dir, trusted = []) {
   const problems = [];
   const shas = git(dir, ['rev-list', ...revArgs]).split('\n').filter(Boolean);
-  for (const sha of shas) {
+  const seen = new Map();
+  const publicEmail = (email, field) => {
+    const k = `${field} ${email}`;
+    if (!seen.has(k)) seen.set(k, trusted.length > 0 && git(dir, ['log', '-1', '--format=%H', `--${field}=<${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}>`, ...trusted.map((r) => `--remotes=${r}`)]).trim() !== '');
+    return seen.get(k);
+  };
+  for (const { sha, raw } of readCommits(dir, shas)) {
     const at = `${label} ${sha.slice(0, 7)}`;
-    const [an, ae, cn, ce] = git(dir, ['show', '-s', '--format=%an%x00%ae%x00%cn%x00%ce', sha]).trim().split('\0');
-    if (!OK_EMAIL.test(ae)) problems.push(`${at}: author email is not a GitHub noreply address`);
-    if (!OK_EMAIL.test(ce)) problems.push(`${at}: committer email is not a GitHub noreply address`);
-    const head = `${an}\n${ae}\n${cn}\n${ce}\n` + git(dir, ['show', '-s', '--format=%B', sha]);
-    for (const n of findHits(head, deny)) problems.push(`${at}: denylist line ${n} (message or identity)`);
+    for (const field of ['author', 'committer']) {
+      const email = (raw.match(new RegExp(`^${field} .*<([^>]*)>`, 'm')) || [])[1] || '';
+      if (!OK_EMAIL.test(email) && !publicEmail(email, field)) problems.push(`${at}: ${field} email is not a GitHub noreply address`);
+    }
+    // the whole object: headers (mergetag, encoding, extra headers), identities, message
+    for (const n of findHits(raw, deny)) problems.push(`${at}: denylist line ${n} (message or identity)`);
     for (const { path, newSha, oldSha } of addedContent(dir, sha)) {
       for (const n of findHits(path, deny)) problems.push(`${at}: path matches denylist line ${n}`);
       if (!newSha) continue;
@@ -116,17 +151,16 @@ export function scanCommits(dir, revArgs, deny, label = dir) {
       else {
         const old = gitBuf(dir, ['cat-file', 'blob', oldSha]);
         if (!isText(old)) hits = bufHits(blob, deny);
-        else {
-          const diff = git(dir, ['diff', '-U0', '--no-color', '--no-ext-diff', '--no-textconv', '--text', oldSha, newSha]);
-          const added = diff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++')).map((l) => l.slice(1)).join('\n');
-          hits = findHits(added, deny);
-        }
+        else hits = findHits(addedLines(git(dir, ['diff', '-U0', '--no-color', '--no-ext-diff', '--no-textconv', '--text', oldSha, newSha])), deny);
       }
       for (const n of hits) problems.push(`${at}: ${path}: denylist line ${n}`);
     }
   }
   return problems;
 }
+
+// The `+` lines of a unified diff, which is all a diff makes newly public.
+export const addedLines = (diff) => diff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++')).map((l) => l.slice(1)).join('\n');
 
 // Returns [absolute path, path as published]: a repo's files are named relative to the repo root.
 function walk(p, out = [], root = null) {
@@ -152,10 +186,10 @@ export function scanFiles(paths, deny) {
 // Pre-push: everything the push makes public that isn't public already. Public already means reachable
 // from the remote being pushed to, or from `upstream` (the public project an oss clone forks).
 // Other remotes may be private, so they prove nothing.
-export function prePush(dir, refLines, deny, remote = '') {
+export function prePush(dir, refLines, deny, remote = '', argv = []) {
   const problems = [];
-  const remotes = git(dir, ['remote']).split('\n').filter(Boolean);
-  const known = ['upstream', remote].filter((r) => remotes.includes(r)).map((r) => `--remotes=${r}`);
+  const trusted = trustedRemotes(dir, remote);
+  const known = trusted.map((r) => `--remotes=${r}`);
   for (const line of refLines.split('\n').filter(Boolean)) {
     const [, localSha, remoteRef, remoteSha] = line.split(' ');
     if (ZERO.test(localSha)) continue; // deleting a remote ref publishes nothing
@@ -168,14 +202,28 @@ export function prePush(dir, refLines, deny, remote = '') {
       for (const n of findHits(tag, deny)) problems.push(`${remoteRef}: tag denylist line ${n}`);
       target = (tag.match(/^object ([0-9a-f]+)/m) || [])[1];
     }
-    if (git(dir, ['cat-file', '-t', target]).trim() !== 'commit') {
-      for (const n of bufHits(gitBuf(dir, ['cat-file', '-p', target]), deny)) problems.push(`${remoteRef}: object denylist line ${n}`);
+    const type = git(dir, ['cat-file', '-t', target]).trim();
+    if (type === 'blob') { for (const n of bufHits(gitBuf(dir, ['cat-file', 'blob', target]), deny)) problems.push(`${remoteRef}: blob denylist line ${n}`); continue; }
+    if (type === 'tree') {
+      for (const e of git(dir, ['ls-tree', '-r', '-z', target]).split('\0').filter(Boolean)) {
+        const [meta, path] = e.split('\t'); const [, kind, sha] = meta.split(' ');
+        for (const n of findHits(path, deny)) problems.push(`${remoteRef}: path matches denylist line ${n}`);
+        if (kind === 'blob') for (const n of bufHits(gitBuf(dir, ['cat-file', 'blob', sha]), deny)) problems.push(`${remoteRef}: ${path}: denylist line ${n}`);
+      }
       continue;
     }
     // a remote tip we never fetched (e.g. a maintainer's edit to a PR branch) can't be excluded locally
     const haveRemote = !ZERO.test(remoteSha) && run0(dir, ['cat-file', '-e', `${remoteSha}^{commit}`]);
     const rev = [target, '--not', ...known, ...(haveRemote ? [remoteSha] : [])];
-    problems.push(...scanCommits(dir, rev, deny, remoteRef));
+    problems.push(...scanCommits(dir, rev, deny, remoteRef, trusted));
+  }
+  if (problems.length) return problems;
+  // clean: now the repo's own pre-push (husky etc.), with the same arguments and ref lines
+  let chain = ''; try { chain = git(dir, ['config', 'aura.chainHooks']).trim(); } catch {}
+  const own = chain && join(chain, 'pre-push');
+  if (own && existsSync(own)) {
+    const r = spawnSync(own, argv, { cwd: dir, input: refLines, stdio: ['pipe', 'inherit', 'inherit'] });
+    if (r.status !== 0) problems.push(`the repo's own pre-push hook failed (${r.status})`);
   }
   return problems;
 }
@@ -187,30 +235,45 @@ function textHits(label, text, deny) { return findHits(text || '', deny).map((n)
 
 // Is this clone really guarded? Uses git's own effective hooks dir (so a core.hooksPath set later,
 // e.g. by husky on npm install, shows up), and the hook's scanner copy must match the current one.
-export function checkClone(d) {
+export function checkClone(d, { oss = false } = {}) {
   const problems = [];
+  const cfg = (...k) => { try { return git(d, ['config', ...k]).trim(); } catch { return ''; } };
   let hooks = git(d, ['rev-parse', '--git-path', 'hooks']).trim();
   if (!isAbsolute(hooks)) hooks = join(d, hooks);
   const hook = join(hooks, 'pre-push'), copy = join(hooks, 'leaks.mjs');
   if (!existsSync(hook) || !readFileSync(hook, 'utf8').includes('installed by install-hooks.mjs')) problems.push('pre-push hook not active (core.hooksPath changed, or install-hooks.mjs not run)');
   else if (!existsSync(copy) || !readFileSync(copy).equals(readFileSync(fileURLToPath(import.meta.url)))) problems.push("the hook's scanner copy is out of date (re-run install-hooks.mjs)");
-  let email = ''; try { email = git(d, ['config', 'user.email']).trim(); } catch {}
-  if (!OK_EMAIL.test(email)) problems.push('user.email is not the noreply address');
+  if (!OK_EMAIL.test(cfg('user.email'))) problems.push('user.email is not the noreply address');
+  if (!gateFirst(cfg('--get-all', 'credential.https://github.com.helper'))) problems.push('the credential gate is not the first GitHub credential helper');
+  for (const r of git(d, ['remote']).split('\n').filter(Boolean)) {
+    const url = cfg(`remote.${r}.pushurl`) || cfg(`remote.${r}.url`);
+    if (/^(ssh:\/\/|[\w.-]+@[\w.-]+:)/.test(url)) problems.push(`remote ${r} pushes over ssh, which the credential gate can't guard`);
+  }
+  if (oss && !cfg('aura.upstream')) problems.push('no recorded upstream (install-hooks.mjs --upstream <remote>)');
   return problems;
+}
+
+// After the last empty value (which resets inherited helpers), the gate must come first.
+const gateFirst = (helpers) => { const list = helpers.split('\n'); const i = list.lastIndexOf(''); return (list[i + 1] || '').includes('--gate') && i !== -1; };
+
+// Credential helper mode: git asks for credentials before a push talks to GitHub. Refuse (quit=1)
+// when this clone's guard isn't the one git will run. Skips the copy check: it runs as the copy.
+export function gate(dir, action) {
+  if (action !== 'get') return [];
+  return checkClone(dir).filter((p) => !p.includes('out of date'));
 }
 
 // Everything this run made public. Older public repos are reported, not gated.
 export function scanAll(deny, { here = dirname(dirname(fileURLToPath(import.meta.url))) } = {}) {
   const gated = [], reported = [];
-  gated.push(...scanFiles([here], deny), ...scanCommits(here, ['--all'], deny, 'Feldt/Feldt'));
+  gated.push(...scanFiles([here], deny), ...scanCommits(here, ['--all'], deny, 'Feldt/Feldt'), ...checkClone(here).map((p) => `run worktree: ${p}`));
   const clones = join(dirname(here), 'oss-aura');
   if (existsSync(clones)) for (const c of readdirSync(clones)) {
     const d = join(clones, c);
     if (!existsSync(join(d, '.git'))) continue;
-    gated.push(...checkClone(d).map((p) => `${c}: ${p}`));
-    const remotes = git(d, ['remote']).split('\n');
-    const not = remotes.includes('upstream') ? ['--not', '--remotes=upstream'] : ['--not', '--remotes'];
-    gated.push(...scanCommits(d, ['--branches', ...(remotes.includes('origin') ? ['--remotes=origin'] : []), ...not], deny, c));
+    gated.push(...checkClone(d, { oss: true }).map((p) => `${c}: ${p}`));
+    const trusted = trustedRemotes(d, 'origin');
+    gated.push(...scanCommits(d, ['--branches', '--not', ...trusted.map((r) => `--remotes=${r}`)], deny, c, trusted));
   }
   const user = 'Feldt';
   for (const r of ghJson(['repo', 'list', user, '--limit', '200', '--json', 'nameWithOwner,isFork,createdAt']) || []) {
@@ -226,7 +289,7 @@ export function scanAll(deny, { here = dirname(dirname(fileURLToPath(import.meta
         const label = `${r.nameWithOwner}@${b.name} ${c.sha.slice(0, 7)}`;
         for (const who of [c.commit.author, c.commit.committer]) if (!OK_EMAIL.test(who.email)) mine.push(`${label}: ${who === c.commit.author ? 'author' : 'committer'} email is not a GitHub noreply address`);
         const full = ghJson(['api', `repos/${r.nameWithOwner}/commits/${c.sha}`]);
-        mine.push(...textHits(label, c.commit.message + '\n' + (full.files || []).map((f) => f.filename + '\n' + (f.patch || '')).join('\n'), deny));
+        mine.push(...textHits(label, c.commit.message + '\n' + (full.files || []).map((f) => f.filename + '\n' + addedLines(f.patch || '')).join('\n'), deny));
       }
     }
   }
@@ -262,7 +325,13 @@ function main(argv) {
     const dir = args[1]; if (!dir) return usage();
     const not = args.indexOf('--not-remote');
     problems = scanCommits(dir, not > 0 ? ['--all', '--not', `--remotes=${args[not + 1]}`] : ['--all'], deny);
-  } else if (args[0] === '--pre-push') problems = prePush(process.cwd(), readFileSync(0, 'utf8'), deny, args[1]);
+  } else if (args[0] === '--pre-push') problems = prePush(process.cwd(), readFileSync(0, 'utf8'), deny, args[1], args.slice(1));
+  else if (args[0] === '--gate') {
+    try { readFileSync(0); } catch {}
+    const p = gate(process.cwd(), args[1]);
+    if (p.length) { for (const x of p) console.error(`leaks gate: ${x}`); console.error('leaks gate: refusing to authenticate; re-run install-hooks.mjs'); process.stdout.write('quit=1\n'); }
+    return 0;
+  }
   else if (args[0] === '--check-clone') { if (!args[1]) return usage(); problems = checkClone(resolve(args[1])); }
   else if (args[0] === '--all') {
     const { gated, reported } = scanAll(deny);
