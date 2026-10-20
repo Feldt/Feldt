@@ -1,21 +1,20 @@
 #!/usr/bin/env node
 // data.mjs --out <dir>: Feldt's public PRs -> <dir>/data.json and
-// dist/mission/<org>--<repo>-<n>.svg (one tile per open or merged PR). Only PRs in pr-rules.json's orgs count;
+// dist/mission/<org>--<repo>-<n>.svg (one candy tile per open or merged PR, scripts/tiles/tiles.mjs). Each org's
+// avatar is fetched once per run and stored in data.json as pixel cells (logos), so check.mjs re-renders the tiles
+// from data.json alone; an avatar that fails to load keeps the last good logo (or shows a monogram). Only PRs in pr-rules.json's orgs count;
 // closed-unmerged PRs don't show. Every fetch finishes before anything is written, so a failed or incomplete
 // search exits 1 and leaves the last good output alone. A good run replaces dist/mission whole, so a tile
 // whose PR closed unmerged or left the allowlist goes away.
-// Env: GITHUB_TOKEN (the Action's), GITHUB_API_URL (default https://api.github.com).
+// Env: GITHUB_TOKEN (the Action's), GITHUB_API_URL (default https://api.github.com),
+// GITHUB_AVATARS_URL (default https://github.com, which serves <org>.png).
 import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tileSvg as candyTile, logoFor } from './tiles/tiles.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const QUERY = 'is:pr is:public author:Feldt';
-const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
-const MONO = "Menlo,Consolas,'DejaVu Sans Mono',monospace";
-// one card look that reads on both GitHub themes
-const CARD = { bg: '#161b22', border: '#30363d', text: '#e6edf3', dim: '#8b949e', open: '#3fb950', merged: '#a371f7', accent: '#f0883e' };
 
 export async function fetchPrs({ api = process.env.GITHUB_API_URL || 'https://api.github.com', token = process.env.GITHUB_TOKEN } = {}) {
   const items = [];
@@ -55,37 +54,40 @@ export const statsOf = (prs) => ({
   repos: new Set(prs.map((p) => p.repo.toLowerCase())).size, orgs: new Set(prs.map((p) => p.org.toLowerCase())).size,
 });
 
-export function tileSvg(p) {
-  const W = 420, H = 92, title = p.title.length > 52 ? `${p.title.slice(0, 51)}…` : p.title;
-  const colour = p.state === 'merged' ? CARD.merged : CARD.open;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(`${p.repo}#${p.number} ${p.state}: ${p.title}`)}">`
-    + `<style>.r{font:600 14px ${FONT};fill:${CARD.text}}.n{font:13px ${MONO};fill:${CARD.dim}}.t{font:13px ${FONT};fill:${CARD.text}}.s{font:600 11px ${FONT};fill:#0d1117}</style>`
-    + `<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="10" fill="${CARD.bg}" stroke="${CARD.border}"/>`
-    + `<text x="16" y="28" class="r">${esc(p.repo)}</text><text x="${W - 16}" y="28" text-anchor="end" class="n">#${p.number}</text>`
-    + `<text x="16" y="54" class="t">${esc(title)}</text>`
-    + `<rect x="16" y="64" width="62" height="18" rx="9" fill="${colour}"/><text x="47" y="77" text-anchor="middle" class="s">${p.state}</text></svg>\n`;
+// p's tile: its colour follows its place in the list, its logo is its org's entry in data.json's logos
+export const tileSvg = (p, i = 0, logos = {}) => candyTile(p, { index: i, logo: logos?.[p.org.toLowerCase()] ?? null });
+
+// org (lower case) -> logo for every org with a PR, sorted; prev is the last data.json's logos (kept on a failed fetch)
+export async function logosOf(prs, prev = {}, opts = {}) {
+  const orgs = new Map(prs.map((p) => [p.org.toLowerCase(), p.org]));
+  const out = {};
+  for (const key of [...orgs.keys()].sort()) out[key] = (await logoFor(orgs.get(key), { base: opts.avatars || process.env.GITHUB_AVATARS_URL })) ?? prev[key] ?? null;
+  return out;
 }
 
 // Every file data.mjs publishes besides data.json, as { path: body }; check.mjs re-runs it on data.json.
-export const dataFiles = ({ prs, stats }) => ({
-  ...Object.fromEntries(prs.map((p) => [p.tile, tileSvg(p)])),
+export const dataFiles = ({ prs, logos = {} }) => ({
+  ...Object.fromEntries(prs.map((p, i) => [p.tile, tileSvg(p, i, logos)])),
 });
-export const dataJson = ({ prs, stats }) => JSON.stringify({ query: QUERY, stats, prs }, null, 1) + '\n';
+export const dataJson = ({ prs, stats, logos = {} }) => JSON.stringify({ query: QUERY, stats, prs, logos }, null, 1) + '\n';
 
 export async function build(out, opts = {}) {
   const orgs = JSON.parse(readFileSync(join(ROOT, 'pr-rules.json'), 'utf8')).orgs;
   const { prs, stats } = shape(await fetchPrs(opts), orgs); // throws before anything is written
+  let prev = {};
+  try { prev = JSON.parse(readFileSync(join(out, 'data.json'), 'utf8')).logos || {}; } catch { /* first run */ }
+  const logos = await logosOf(prs, prev, opts); // never throws: a missing avatar is a monogram
   // render into a staging folder, then move it in: the mission folder is replaced whole, never merged
   const stage = join(out, '.data-new'), old = join(out, '.data-old');
   for (const d of [stage, old]) rmSync(d, { recursive: true, force: true });
   mkdirSync(join(stage, 'dist', 'mission'), { recursive: true });
-  for (const [f, body] of Object.entries(dataFiles({ prs, stats }))) writeFileSync(join(stage, f), body);
-  writeFileSync(join(stage, 'data.json'), dataJson({ prs, stats }));
+  for (const [f, body] of Object.entries(dataFiles({ prs, stats, logos }))) writeFileSync(join(stage, f), body);
+  writeFileSync(join(stage, 'data.json'), dataJson({ prs, stats, logos }));
   mkdirSync(join(out, 'dist'), { recursive: true });
   if (existsSync(join(out, 'dist', 'mission'))) renameSync(join(out, 'dist', 'mission'), old);
   for (const f of ['dist/mission', 'data.json']) renameSync(join(stage, f), join(out, f));
   for (const d of [stage, old]) rmSync(d, { recursive: true, force: true });
-  return { prs, stats };
+  return { prs, stats, logos };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

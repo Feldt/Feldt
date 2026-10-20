@@ -5,13 +5,16 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildLoop, loopSvg } from './frames.mjs';
+import { W as TILE_W } from './tiles/tiles.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const attr = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// the README markup for data.mjs's output; check.mjs compares the README against these, so it is defined once
-export const tileLink = (p) => `<a href="${attr(p.url)}"><img src="${attr(p.tile)}" alt="${attr(`${p.repo}#${p.number} ${p.state}: ${p.title}`)}" width="420"></a>`;
+// the README markup for data.mjs's output; check.mjs compares the README against these, so it is defined once.
+// One linked tile per line: GitHub joins the lines with a space, so two 408 px tiles share a row in the ~838 px
+// desktop column, and on a phone each shrinks to the column (max-width: 100%), one per row.
+export const tileLink = (p) => `<a href="${attr(p.url)}"><img src="${attr(p.tile)}" alt="${attr(`${p.repo}#${p.number} ${p.state}: ${p.title}`)}" width="${TILE_W}"></a>`;
 // the themed header: [media, file] sources in order, then the light fallback; check.mjs requires the same
 export const HEADER_SOURCES = [
   ['(max-width: 600px) and (prefers-color-scheme: dark)', 'dist/header-mobile-dark.svg', 'dark'],
@@ -19,18 +22,12 @@ export const HEADER_SOURCES = [
   ['(prefers-color-scheme: dark)', 'dist/header-dark.svg', 'dark'],
 ];
 export const HEADER_FALLBACK = ['dist/header-light.svg', 'light'];
-export const MISSIONS = '## Open-source missions';
 
-// the open-source section: one linked tile per PR, from data.mjs's data.json (tiles only, D22)
+// the open-source section: one linked tile per PR, from data.mjs's data.json (tiles only, D22; no heading: the
+// tiles say what they are)
 function cards(data) {
-  if (!data) return [];
-  const { prs } = data;
-  return [
-    MISSIONS,
-    '',
-    ...prs.map(tileLink),
-    ...(prs.length ? [''] : []),
-  ];
+  if (!data || !data.prs.length) return [];
+  return [...data.prs.map(tileLink), ''];
 }
 
 // Every file render publishes, as { path: body }, from profile.json and data.json (null before data.mjs has run).

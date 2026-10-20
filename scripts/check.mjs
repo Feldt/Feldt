@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 import { createHash } from 'node:crypto';
-import { attr, tileLink, renderFiles, HEADER_SOURCES, HEADER_FALLBACK, MISSIONS } from './render.mjs';
+import { attr, tileLink, renderFiles, HEADER_SOURCES, HEADER_FALLBACK } from './render.mjs';
+import { unrle } from './tiles/lib/logo.mjs';
 import { QUERY, statsOf, tileOf, dataFiles, dataJson } from './data.mjs';
 import { THEMES, rgbOf, contrast } from './frames.mjs';
 
@@ -100,17 +101,23 @@ function profileShape(p) {
     && keysOf(p.intro || {}) === 'facts,line' && keysOf(p.intro.line || {}) === 'source,text' && isStr(p.intro.line.text) && isStr(p.intro.line.source)
     && Array.isArray(p.intro.facts) && p.intro.facts.every((f) => keysOf(f || {}) === 'source,text' && isStr(f.text) && isStr(f.source));
 }
-// data.json, exact keys and types
+// data.json, exact keys and types; a logo is null (monogram) or pixel cells whose run-length code fills n x n
 const PR_KEYS = 'created,merged,number,org,repo,state,tile,title,url';
+const logoShape = (l) => l === null || (keysOf(l || {}) === 'bleed,n,pal,px' && Number.isInteger(l.n) && l.n > 0 && l.n <= 128 && typeof l.bleed === 'boolean'
+  && Array.isArray(l.pal) && l.pal.length >= 1 && l.pal.length <= 52 && l.pal.every((c) => /^#[0-9a-f]{6}$/.test(c))
+  && isStr(l.px) && /^(?:[A-Za-z]\d*)+$/.test(l.px) && unrle(l.px).length === l.n * l.n && [...unrle(l.px)].every((c) => 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'.indexOf(c) < l.pal.length));
 function dataShape(d) {
-  return keysOf(d || {}) === 'prs,query,stats' && isStr(d.query) && keysOf(d.stats || {}) === 'merged,open,orgs,prs,repos'
+  return keysOf(d || {}) === 'logos,prs,query,stats' && isStr(d.query) && d.logos && typeof d.logos === 'object' && !Array.isArray(d.logos) && Object.values(d.logos).every(logoShape) && keysOf(d.stats || {}) === 'merged,open,orgs,prs,repos'
     && Object.values(d.stats).every(Number.isInteger) && Array.isArray(d.prs)
     && d.prs.every((p) => keysOf(p || {}) === PR_KEYS && Number.isInteger(p.number) && ['created', 'org', 'repo', 'state', 'tile', 'title', 'url'].every((k) => isStr(p[k])) && (p.merged === null || isStr(p.merged)));
 }
 const prsOf = (ctx) => (ctx.dataOk ? ctx.data.prs : []);
 const README = (ctx) => ctx.expected?.['README.md'] ?? '';
 const headers = (ctx) => [...HEADER_SOURCES.map(([, f, t]) => [f, t]), HEADER_FALLBACK].filter(([f]) => ctx.expected?.[f]);
-const introLines = (md) => { const l = md.split('\n'), i = l.findIndex((x) => /<\/picture>/.test(x)) + 1, e = l.indexOf(MISSIONS, i); return l.slice(i, e < 0 ? undefined : e); };
+const TILE_LINE = /^<a href="[^"]*"><img src="dist\/mission\//;
+const introLines = (md) => { const l = md.split('\n'), i = l.findIndex((x) => /<\/picture>/.test(x)) + 1, e = l.findIndex((x, k) => k >= i && TILE_LINE.test(x)); return l.slice(i, e < 0 ? undefined : e); };
+// a tile must stay inside GitHub's image CSP: no scripts, images, fonts or text elements, references inside the file only
+const CSP_UNSAFE = /<(?:script|image|img|foreignObject|iframe|text|font)\b|@import|@font-face|javascript:|\shref="(?!#)|url\((?!#)/i;
 
 export const RULES = [
   // the published files are exactly the render of the published inputs
@@ -144,6 +151,7 @@ export const RULES = [
   // the generator's output (the render the published files must equal)
   { id: 'svg-root', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.endsWith('.svg') && !(SVG_ROOT.test(b) && SVG_NS.test(b.slice(b.indexOf('<svg'))))).map(([f]) => f), 'SVGs without an <svg> root in the SVG namespace') },
   { id: 'svg-wellformed', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.endsWith('.svg') && xmlProblem(b)).map(([f, b]) => `${f} (${xmlProblem(b)})`), 'SVGs that are not well-formed XML') },
+  { id: 'tile-csp-safe', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.startsWith('dist/mission/') && CSP_UNSAFE.test(b)).map(([f]) => f), "tiles GitHub's image CSP would break") },
   { id: 'svg-size', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.endsWith('.svg') && Buffer.byteLength(b) > MAX_SVG).map(([f]) => f), 'SVGs over 150 KB') },
   { id: 'readme-refs-resolve', layer: 'output', test: (ctx) => bad(imageRefs(README(ctx)).filter(local).map(clean).filter((r) => !(r in (ctx.expected || {}))), 'README images that are not rendered') },
   { id: 'readme-alts', layer: 'output', test: (ctx) => bad([...README(ctx).matchAll(/<img\b[^>]*>/g)].map((m) => m[0]).filter((t) => !/\salt="[^"]+"/.test(t)).map((t) => t.slice(0, 60)), 'README images without alt text') },
@@ -159,9 +167,9 @@ export const RULES = [
   { id: 'header-blink', layer: 'output', test: (ctx) => bad(headers(ctx).map(([f]) => f).filter((f) => !/<g class="f3">[\s\S]*?<text/.test(ctx.expected[f])), 'headers without the blink frame') },
   { id: 'header-tagline', layer: 'output', test: (ctx) => bad(headers(ctx).map(([f]) => f).filter((f) => /<text id="tagline"[^>]*>([^<]*)<\/text>/.exec(ctx.expected[f])?.[1] !== ctx.profile?.header?.tagline), "headers whose tagline is not profile.json's") },
   { id: 'readme-line-first', layer: 'output', test: (ctx) => (introLines(README(ctx)).find((l) => l.trim()) === ctx.profile?.intro?.line?.text ? null : "the first line under the header art is not profile.json's line") },
-  { id: 'readme-one-heading', layer: 'output', test: (ctx) => bad(README(ctx).split('\n').filter((l) => /^\s*#/.test(l) && l !== MISSIONS), 'README headings other than the PR cards') },
+  { id: 'readme-one-heading', layer: 'output', test: (ctx) => bad(README(ctx).split('\n').filter((l) => /^\s*#/.test(l)), 'README headings (the tiles need none)') },
   { id: 'readme-tiles', layer: 'output', test: (ctx) => { const md = README(ctx), p = prsOf(ctx); return p.every((x) => md.includes(tileLink(x))) && (md.match(/dist\/mission\//g) || []).length === p.length ? null : 'README does not show exactly one linked tile per PR'; } },
-  { id: 'readme-cards-last', layer: 'output', test: (ctx) => { const md = README(ctx), m = md.indexOf(MISSIONS); return m < 0 || m > md.indexOf(ctx.profile?.intro?.line?.text) ? null : 'the PR cards are not after the intro line'; } },
+  { id: 'readme-cards-last', layer: 'output', test: (ctx) => { const md = README(ctx), m = md.search(/^<a href="[^"]*"><img src="dist\/mission\//m); return m < 0 || m > md.indexOf(ctx.profile?.intro?.line?.text) ? null : 'the PR cards are not after the intro line'; } },
 ];
 
 const read = (f) => (existsSync(f) ? readFileSync(f, 'utf8') : null);
