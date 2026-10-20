@@ -7,11 +7,13 @@ import { buildLoop, loopSvg } from './frames.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+const attr = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 export function render(out, profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'))) {
   const dist = join(out, 'dist');
   mkdirSync(dist, { recursive: true });
   const files = { 'dist/header.svg': loopSvg(buildLoop({ src: join(ROOT, profile.bud.source.file) })) };
-  const alt = `${profile.bud.name}, a SkyBuds plush, in animated colour ASCII`;
+  const alt = attr(`${profile.bud.name}, a SkyBuds plush, in animated colour ASCII`);
   files['README.md'] = `<p align="center"><img src="dist/header.svg" alt="${alt}" width="100%"></p>\n`;
   for (const [p, body] of Object.entries(files)) writeFileSync(join(out, p), body);
   return Object.keys(files);
