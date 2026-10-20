@@ -10,6 +10,7 @@ import { renderFiles, budInputs, BANNER_PICTURE, BANNER_PHONE, BANNER_DESKTOP } 
 import { unrle } from './tiles/lib/logo.mjs';
 import { QUERY, statsOf, tileOf, dataFiles, dataJson } from './data.mjs';
 import { BUDS } from './banner/buds.mjs';
+import { badgeLine } from './badges.mjs';
 
 export const MAX_SVG = 150 * 1024, MAX_BANNER = 600 * 1024;
 const KB = (n) => `${n / 1024} KB`;
@@ -119,6 +120,9 @@ const README = (ctx) => ctx.expected?.['README.md'] ?? '';
 const BANNERS = [[BANNER_DESKTOP, '0 0 1200 300'], [BANNER_PHONE, '0 0 640 320']];
 const banners = (ctx) => BANNERS.filter(([f]) => isStr(ctx.expected?.[f])).map(([f, vb]) => [f, ctx.expected[f], vb]);
 const TILE_LINE = /^<a href="[^"]*"><img src="dist\/mission\//;
+// a PR badge line (badges.mjs): a link around a <picture> of the PR's badge files
+const BADGE_LINE = /^<a href="[^"]*"><picture><source media="\(prefers-color-scheme: dark\)" srcset="dist\/badges\//;
+const badgeLines = (md) => md.split('\n').filter((l) => /dist\/badges\//.test(l));
 const introLines = (md) => { const l = md.split('\n'), i = l.findIndex((x) => /<\/picture>/.test(x)) + 1, e = l.findIndex((x, k) => k >= i && TILE_LINE.test(x)); return l.slice(i, e < 0 ? undefined : e); };
 // a tile must stay inside GitHub's image CSP: no scripts, images, fonts or text elements, references inside the file only
 const CSP_UNSAFE = /<(?:script|image|img|foreignObject|iframe|text|font)\b|@import|@font-face|javascript:|\shref="(?!#)|url\((?!#)/i;
@@ -163,7 +167,7 @@ export const RULES = [
   { id: 'readme-alts', layer: 'output', test: (ctx) => bad([...README(ctx).matchAll(/<img\b[^>]*>/g)].map((m) => m[0]).filter((t) => !/\salt="[^"]+"/.test(t)).map((t) => t.slice(0, 60)), 'README images without alt text') },
   { id: 'readme-html', layer: 'output', test: (ctx) => bad([...README(ctx).matchAll(/<(?:img|a|source|picture|p)\b[^\n]*?>/g)].map((m) => m[0]).filter((t) => !/^<(?:img|a|source|picture|p)(?:\s+[\w-]+="[^"<>]*")*\s*\/?>$/.test(t)).map((t) => t.slice(0, 60)), 'malformed README tags') },
   // the banner: exactly the centred <picture> render.mjs writes, and two well-formed, animated, CSP-safe SVGs
-  { id: 'banner-picture', layer: 'output', test: (ctx) => (README(ctx).startsWith(`${BANNER_PICTURE.join('\n')}\n`) && (README(ctx).match(/<picture>/g) || []).length === 1 ? null : 'the README does not open with the banner <picture> (phone source, desktop image)') },
+  { id: 'banner-picture', layer: 'output', test: (ctx) => (README(ctx).startsWith(`${BANNER_PICTURE.join('\n')}\n`) && README(ctx).split('\n').filter((l) => !BADGE_LINE.test(l)).join('\n').split('<picture>').length === 2 ? null : 'the README does not open with the banner <picture> (phone source, desktop image)') },
   { id: 'banner-wellformed', layer: 'output', test: (ctx) => bad([...BANNERS.filter(([f]) => !isStr(ctx.expected?.[f])).map(([f]) => `${f} not rendered`), ...banners(ctx).filter(([, b]) => !SVG_ROOT.test(b) || !SVG_NS.test(b.slice(b.indexOf('<svg'))) || xmlProblem(b)).map(([f, b]) => `${f} (${xmlProblem(b) || 'no <svg> root in the SVG namespace'})`)], 'banners that are not well-formed SVG') },
   { id: 'banner-viewbox', layer: 'output', test: (ctx) => bad(banners(ctx).filter(([, b, vb]) => /<svg\b[^>]*\sviewBox="([^"]*)"/.exec(b)?.[1] !== vb).map(([f, , vb]) => `${f} (want ${vb})`), 'banners with the wrong viewBox') },
   { id: 'banner-size', layer: 'output', test: (ctx) => bad(banners(ctx).filter(([, b]) => Buffer.byteLength(b) > MAX_BANNER).map(([f, b]) => `${f} (${Buffer.byteLength(b)} bytes)`), 'banners over 600 KB') },
@@ -172,8 +176,12 @@ export const RULES = [
   { id: 'banner-reduced-motion', layer: 'output', test: (ctx) => bad(banners(ctx).filter(([, b]) => !/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\*\s*\{\s*animation:\s*none\s*!important/.test(b)).map(([f]) => f), 'banners that keep moving under prefers-reduced-motion') },
   { id: 'readme-line-first', layer: 'output', test: (ctx) => (introLines(README(ctx)).find((l) => l.trim()) === ctx.profile?.intro?.line?.text ? null : "the first line under the banner is not profile.json's line") },
   { id: 'readme-one-heading', layer: 'output', test: (ctx) => bad(README(ctx).split('\n').filter((l) => /^\s*#/.test(l)), 'README headings (the tiles need none)') },
-  // no PR tiles on the profile (Fred 10-20): the README ends at the intro line and its facts
+  // no PR tiles on the profile (Fred 10-20)
   { id: 'readme-no-tiles', layer: 'output', test: (ctx) => (/dist\/mission\//.test(README(ctx)) ? 'README shows PR tiles (Fred 10-20: none)' : null) },
+  // one small badge per PR instead (Fred 10-20), newest first, each exactly the line badges.mjs writes, and its two
+  // files drawn inside GitHub's image CSP like a banner (text in system fonts, nothing loaded)
+  { id: 'readme-badges', layer: 'output', test: (ctx) => (JSON.stringify(badgeLines(README(ctx))) === JSON.stringify([...prsOf(ctx)].reverse().map(badgeLine)) ? null : 'the README badges are not one badge line per PR, newest first') },
+  { id: 'badge-csp-safe', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.startsWith('dist/badges/') && BANNER_UNSAFE.test(b)).map(([f, b]) => `${f} (${BANNER_UNSAFE.exec(b)[0]})`), "badges GitHub's image CSP would break") },
 ];
 
 const read = (f) => (existsSync(f) ? readFileSync(f, 'utf8') : null);

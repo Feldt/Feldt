@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // render.mjs --out <dir>: profile.json + the Bud renders it pins -> <dir>/dist/*.svg + <dir>/README.md. No dependencies, deterministic.
-// The README never shows data.json's PRs (no PR tiles, Fred 10-20); data.mjs still writes the tile files.
+// No PR tiles on the README (Fred 10-20); data.mjs still writes the tile files. Each PR in data.json gets one small
+// badge instead, in a row under the intro (Fred 10-20: "small badges for the open PRs"), drawn by badges.mjs.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { buildBanner } from './banner/banner.mjs';
+import { badgeFiles, badgeBlock } from './badges.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -36,13 +38,14 @@ export const BANNER_PICTURE = [
 // check.mjs re-runs this and requires the published bytes to match, so nothing else can be published.
 export function renderFiles(profile, data) {
   const buds = budInputs(profile);
-  const files = { [BANNER_DESKTOP]: buildBanner('desktop', buds), [BANNER_PHONE]: buildBanner('phone', buds) };
+  const files = { [BANNER_DESKTOP]: buildBanner('desktop', buds), [BANNER_PHONE]: buildBanner('phone', buds), ...(data ? badgeFiles(data.prs) : {}) };
   files['README.md'] = [
     ...BANNER_PICTURE,
     '',
     profile.intro.line.text,
     '',
     ...(profile.intro.facts.length ? [...profile.intro.facts.map((f) => `- ${f.text}`), ''] : []),
+    ...(data ? badgeBlock(data.prs) : []),
   ].join('\n');
   return files;
 }
@@ -50,8 +53,7 @@ export function renderFiles(profile, data) {
 export function render(out, profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'))) {
   const dataFile = join(out, 'data.json');
   const files = renderFiles(profile, existsSync(dataFile) ? JSON.parse(readFileSync(dataFile, 'utf8')) : null);
-  mkdirSync(join(out, 'dist'), { recursive: true });
-  for (const [p, body] of Object.entries(files)) writeFileSync(join(out, p), body);
+  for (const [p, body] of Object.entries(files)) { mkdirSync(dirname(join(out, p)), { recursive: true }); writeFileSync(join(out, p), body); }
   return Object.keys(files);
 }
 
