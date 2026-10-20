@@ -1,0 +1,57 @@
+# Renders the profile every hour: Feldt's public PRs in allowlisted orgs (scripts/data.mjs), then the README and
+# header (scripts/render.mjs), checked by scripts/check.mjs. Generated files go to main only when they changed;
+# a stamp naming the rendered commit goes to the orphan `output` branch on every run.
+name: profile
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: profile
+  cancel-in-progress: false
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+      - name: Render and publish to main
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # a shift may push to main while this runs: start again from the new main, at most 5 times
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin main && git reset -q --hard origin/main
+            node scripts/data.mjs --out .
+            node scripts/render.mjs --out . > /dev/null
+            node scripts/check.mjs .
+            # only the generated paths, never a stray staging folder
+            git add -A -- README.md data.json dist
+            if git diff --cached --quiet; then echo "no change"; break; fi
+            git commit -q -m 'profile: render [skip ci]'
+            if git push -q origin HEAD:main; then echo "pushed $(git rev-parse --short HEAD)"; break; fi
+            [ "$attempt" = 5 ] && { echo "main moved 5 times; giving up"; exit 1; }
+            sleep $((attempt * 5))
+          done
+          echo "RENDERED=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Stamp the output branch
+        run: |
+          mkdir -p "$RUNNER_TEMP/out" && cd "$RUNNER_TEMP/out"
+          git init -q -b output
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          printf '%s %s run %s\n' "$RENDERED" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" > stamp.txt
+          git add stamp.txt && git commit -q -m "stamp $RENDERED"
+          git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:output
+          cat stamp.txt
+      - name: Keep the schedule alive
+        # GitHub turns off schedules after 60 days without repo activity; re-enabling every run keeps it on
+        run: gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/profile.yml/enable"
