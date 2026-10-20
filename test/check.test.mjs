@@ -27,6 +27,20 @@ test('M1.T1: render is deterministic for the same profile.json', () => {
   for (const v of ['desktop', 'phone']) assert.equal(readFileSync(join(a, 'dist', `banner-${v}.svg`), 'utf8'), readFileSync(join(b, 'dist', `banner-${v}.svg`), 'utf8'), v);
 });
 
+// M1.T4b: the gate pins the banner's real inputs. Swap one Bud render for another in a copy of the repo, render, and
+// the gate must refuse it by name and sha256, so a wrong image cannot publish.
+test('M1.T4b: a Bud render swapped for another is refused by the gate after a fresh render', async () => {
+  const { cpSync, copyFileSync } = await import('node:fs');
+  const repo = tmp('swap-');
+  cpSync(ROOT, repo, { recursive: true, filter: (src) => !/[\\/](?:\.git|node_modules)$/.test(src) });
+  copyFileSync(join(repo, 'assets', 'buds', 'pdp-pearl-plush-730.png'), join(repo, 'assets', 'buds', 'pdp-ash-plush-900.png'));
+  const r = run('sh', ['-c', 'node scripts/render.mjs --out . && node scripts/check.mjs .'], { cwd: repo });
+  const out = `${r.stdout}\n${r.stderr}`;
+  assert.notEqual(r.status, 0, out);
+  assert.match(out, /ash:/, out);
+  assert.match(out, /sha256/, out);
+});
+
 // D21: the gate refuses any published file that is not the render, with the file and the reason in one line
 const refused = (r, file, why) => { assert.equal(r.status, 1, r.stderr); assert.match(r.stderr, new RegExp(`\\[published-is-rendered\\] .*${file.replace(/[.]/g, '\\.')} ${why}`)); };
 
