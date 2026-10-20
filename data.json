@@ -1,11 +1,11 @@
 {
  "query": "is:pr is:public author:Feldt",
  "stats": {
-  "prs": 2,
+  "prs": 4,
   "merged": 0,
-  "open": 2,
-  "repos": 1,
-  "orgs": 1
+  "open": 4,
+  "repos": 3,
+  "orgs": 2
  },
  "prs": [
   {
@@ -29,9 +29,42 @@
    "created": "2026-10-20T21:04:34Z",
    "merged": null,
    "tile": "dist/mission/cloudflare--workerd-7859.svg"
+  },
+  {
+   "repo": "stripe/smokescreen",
+   "org": "stripe",
+   "number": 356,
+   "title": "smokescreen: never build a rate limiter with a zero burst",
+   "url": "https://github.com/stripe/smokescreen/pull/356",
+   "state": "open",
+   "created": "2026-10-20T21:42:24Z",
+   "merged": null,
+   "tile": "dist/mission/stripe--smokescreen-356.svg"
+  },
+  {
+   "repo": "cloudflare/lol-html",
+   "org": "cloudflare",
+   "number": 344,
+   "title": "Make empty ^=, $= and ~= attribute selectors match nothing",
+   "url": "https://github.com/cloudflare/lol-html/pull/344",
+   "state": "open",
+   "created": "2026-10-20T22:56:27Z",
+   "merged": null,
+   "tile": "dist/mission/cloudflare--lol-html-344.svg"
   }
  ],
  "logos": {
-  "cloudflare": null
+  "cloudflare": null,
+  "stripe": {
+   "n": 64,
+   "bleed": true,
+   "pal": [
+    "#533afd",
+    "#ffffff",
+    "#8c7cfe",
+    "#c6bdfe"
+   ],
+   "px": "a1068c2dba55cd3b5a51c2db10a46c2db15a41c2d2b19a36c2db25a33cd2b28a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b32a32b29dc2a32b25d2ca36b20dc2a41b15dc2a46b10dc2a51b6dc2a55bdc2a1068"
+  }
  }
 }
