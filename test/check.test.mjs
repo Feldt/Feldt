@@ -24,7 +24,7 @@ test('M1.T1: render writes a README whose every local image exists in the output
 test('M1.T1: render is deterministic for the same profile.json', () => {
   const a = built(), b = built();
   assert.equal(readFileSync(join(a, 'README.md'), 'utf8'), readFileSync(join(b, 'README.md'), 'utf8'));
-  for (const v of ['dark', 'light', 'mobile-dark', 'mobile-light']) assert.equal(readFileSync(join(a, 'dist', `header-${v}.svg`), 'utf8'), readFileSync(join(b, 'dist', `header-${v}.svg`), 'utf8'), v);
+  for (const v of ['desktop', 'phone']) assert.equal(readFileSync(join(a, 'dist', `banner-${v}.svg`), 'utf8'), readFileSync(join(b, 'dist', `banner-${v}.svg`), 'utf8'), v);
 });
 
 // D21: the gate refuses any published file that is not the render, with the file and the reason in one line
@@ -32,18 +32,26 @@ const refused = (r, file, why) => { assert.equal(r.status, 1, r.stderr); assert.
 
 test('M1.T1: check refuses a README pointing at a missing image', () => {
   const out = built();
-  rmSync(join(out, 'dist', 'header-light.svg'));
-  refused(check(out), 'dist/header-light.svg', 'missing');
+  rmSync(join(out, 'dist', 'banner-desktop.svg'));
+  refused(check(out), 'dist/banner-desktop.svg', 'missing');
 });
 
-test('M1.T1: check refuses an SVG over 150 KB or one that is not well-formed XML, and svgProblems names why', async () => {
-  const { svgProblems } = await import(join(ROOT, 'scripts', 'check.mjs'));
-  for (const [svg, why] of [[`<svg xmlns="http://www.w3.org/2000/svg"><!-- ${'x'.repeat(151 * 1024)} --></svg>`, /150 KB/], ['<svg xmlns="http://www.w3.org/2000/svg"><text>unclosed</svg>', /XML/]]) {
-    const out = built(); const f = join(out, 'dist', 'header-light.svg');
+test('M1.T1: check refuses a banner over 600 KB, a tile over 150 KB, or an SVG that is not well-formed XML, and svgProblems names why', async () => {
+  const { svgProblems, MAX_SVG, MAX_BANNER } = await import(join(ROOT, 'scripts', 'check.mjs'));
+  assert.equal(MAX_SVG, 150 * 1024);
+  assert.equal(MAX_BANNER, 600 * 1024);
+  for (const [svg, max, why] of [
+    [`<svg xmlns="http://www.w3.org/2000/svg"><!-- ${'x'.repeat(601 * 1024)} --></svg>`, MAX_BANNER, /600 KB/],
+    [`<svg xmlns="http://www.w3.org/2000/svg"><!-- ${'x'.repeat(151 * 1024)} --></svg>`, MAX_SVG, /150 KB/],
+    ['<svg xmlns="http://www.w3.org/2000/svg"><text>unclosed</svg>', MAX_BANNER, /XML/],
+  ]) {
+    const out = built(); const f = join(out, 'dist', 'banner-desktop.svg');
     writeFileSync(f, svg);
-    refused(check(out), 'dist/header-light.svg', 'differs from the render');
-    assert.match(svgProblems(f, 'h').join('\n'), why);
+    refused(check(out), 'dist/banner-desktop.svg', 'differs from the render');
+    assert.match(svgProblems(f, 'h', max).join('\n'), why);
   }
+  const ok = tmp('svg-'); writeFileSync(join(ok, 'a.svg'), `<svg xmlns="http://www.w3.org/2000/svg"><!-- ${'x'.repeat(151 * 1024)} --></svg>`);
+  assert.deepEqual(svgProblems(join(ok, 'a.svg'), 'a', MAX_BANNER), [], 'a banner may be over 150 KB');
 });
 
 const SVGNS = 'xmlns="http://www.w3.org/2000/svg"';
@@ -56,9 +64,9 @@ test('M1.T1a: check refuses an SVG with a bare &, an unknown entity, a repeated 
     [`<svg ${SVGNS} a="1" a="2"/>`, /attribute/],
     ['<svg><text>x</text></svg>', /namespace/],
   ]) {
-    const out = built(); const f = join(out, 'dist', 'header-light.svg');
+    const out = built(); const f = join(out, 'dist', 'banner-phone.svg');
     writeFileSync(f, svg);
-    refused(check(out), 'dist/header-light.svg', 'differs from the render');
+    refused(check(out), 'dist/banner-phone.svg', 'differs from the render');
     assert.match(svgProblems(f, 'h').join('\n'), why, svg);
   }
   const ok = tmp('svg-'); writeFileSync(join(ok, 'a.svg'), `<svg ${SVGNS}><text>a &amp; b &#169; &#x2014;</text></svg>`);
@@ -66,7 +74,7 @@ test('M1.T1a: check refuses an SVG with a bare &, an unknown entity, a repeated 
 });
 
 test('M1.T1a: a README with any other image, or none, is refused', () => {
-  for (const md of ['![bud](dist/missing.svg)\n', "<img src='dist/gone.svg'>\n", '<picture><source srcset="dist/a.svg 1x, dist/b.svg 2x"><img src="dist/header-light.svg"></picture>\n', '# hi\n']) {
+  for (const md of ['![bud](dist/missing.svg)\n', "<img src='dist/gone.svg'>\n", '<picture><source srcset="dist/a.svg 1x, dist/b.svg 2x"><img src="dist/banner-desktop.svg"></picture>\n', '# hi\n']) {
     const out = built();
     writeFileSync(join(out, 'README.md'), md);
     refused(check(out), 'README.md', 'differs from the render');
@@ -82,15 +90,16 @@ test('M1.T1a: an image the render did not make is refused, wherever it lives', (
   refused(check(big), 'dist/other.svg', 'not rendered by anything');
 });
 
-test('M1.T1a: the README is rendered from profile.json, escaped', async () => {
-  const { render: renderWith } = await import(join(ROOT, 'scripts', 'render.mjs'));
+test('M1.T1a: the README is rendered from profile.json; the banner alt is the scene, escaped', async () => {
+  const { render: renderWith, attr, BANNER_ALT } = await import(join(ROOT, 'scripts', 'render.mjs'));
   const profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
-  for (const name of ['Pearl', 'A"B<c>']) {
+  assert.equal(attr('A"B<c>&'), 'A&quot;B&lt;c&gt;&amp;');
+  for (const text of ['I make [plush](https://getskybuds.com) friends.', 'Hello from [SkyBuds](https://getskybuds.com/).']) {
     const out = tmp('dist-');
-    renderWith(out, { ...profile, bud: { ...profile.bud, name } });
+    renderWith(out, { ...profile, intro: { ...profile.intro, line: { ...profile.intro.line, text } } });
     const md = readFileSync(join(out, 'README.md'), 'utf8');
-    const esc = name.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    assert.ok(md.includes(`alt="${esc}, a SkyBuds`), md);
+    assert.ok(md.includes(`</picture></p>\n\n${text}\n`), md);
+    assert.ok(md.includes(`alt="${attr(BANNER_ALT)}" width="100%">`), md);
   }
 });
 
@@ -127,7 +136,7 @@ test('M1.T7a: every published file is covered byte for byte, and nothing unrende
     }
   }
   for (const stray of ['dist/x.svg', 'dist/mission/x.svg', 'dist/a/b.txt']) {
-    const o = copy(); mkdirSync(dirname(join(o, stray)), { recursive: true }); writeFileSync(join(o, stray), readFileSync(join(good, 'dist', 'header-light.svg')));
+    const o = copy(); mkdirSync(dirname(join(o, stray)), { recursive: true }); writeFileSync(join(o, stray), readFileSync(join(good, 'dist', 'banner-phone.svg')));
     if (!gate(o).some((p) => p.startsWith('[published-is-rendered] '))) missed.push(`${stray} stray`);
   }
   assert.deepEqual(missed, [], 'changes the gate let through');
@@ -151,8 +160,7 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     'profile-line-plain': (c) => { c.profile.intro.line.text = '## [About](https://getskybuds.com) me'; },
     'profile-facts-sourced': (c) => { c.profile.intro.facts = [{ text: 'Best toy ever', source: 'trust me' }]; },
     'profile-facts-plain': (c) => { c.profile.intro.facts = [{ text: '<b>Best</b>', source: 'https://getskybuds.com/' }]; },
-    'profile-brand-only': (c) => { c.profile.header.tagline = 'Feldt Toys, Inc.'; },
-    'profile-tagline-short': (c) => { c.profile.header.tagline = 'x'.repeat(49); },
+    'profile-brand-only': (c) => { c.profile.bud.name = 'Feldt Toys, Inc.'; },
     'data-shape': (c) => { c.dataOk = false; c.data.logos = { nasa: { n: 2, bleed: true, pal: ['#ffffff'], px: 'a3' } }; },
     'data-canonical': (c) => { c.dataRaw += '\n'; },
     'data-query': (c) => { c.data.query = 'is:pr author:Feldt'; },
@@ -166,15 +174,17 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     'stats-derived': (c) => { c.data.stats.merged = 9; },
     'svg-root': (c) => svg(c, pr(c).tile, (s) => s.replace(' xmlns="http://www.w3.org/2000/svg"', '')),
     'svg-wellformed': (c) => svg(c, pr(c).tile, (s) => s.replace('</svg>', '<g></svg>')),
-    'svg-size': (c) => svg(c, 'dist/header-light.svg', (s) => s.replace('</svg>', `<!-- ${'x'.repeat(151 * 1024)} --></svg>`)),
+    'svg-size': (c) => svg(c, pr(c).tile, (s) => s.replace('</svg>', `<!-- ${'x'.repeat(151 * 1024)} --></svg>`)),
     'readme-refs-resolve': (c) => md(c, (m) => m.replace(pr(c).tile, 'dist/gone.svg')),
     'readme-alts': (c) => md(c, (m) => m.replace(/ alt="[^"]*" width="408"/, ' width="408"')),
     'readme-html': (c) => md(c, (m) => m.replace('alt="nasa/fprime#1 open: fix 1"', 'alt="nasa/fprime#1 open: fix "1" <b>"')),
-    'header-picture': (c) => md(c, (m) => m.replace(' width="100%">', '>')),
-    'header-contrast': (c) => svg(c, 'dist/header-dark.svg', (s) => s.replace(/(\.c\d+\{fill:#)[0-9a-f]{6}/, '$10e1118')),
-    'header-mobile-glyphs': (c) => svg(c, 'dist/header-mobile-light.svg', (s) => s.replace(/font-size:[\d.]+px/, 'font-size:3px')),
-    'header-blink': (c) => svg(c, 'dist/header-mobile-dark.svg', (s) => s.replace('<g class="f3">', '<g class="f9">')),
-    'header-tagline': (c) => svg(c, 'dist/header-dark.svg', (s) => s.replace(/(<text id="tagline"[^>]*>)[^<]*/, '$1hello')),
+    'banner-picture': (c) => md(c, (m) => m.replace('<source media="(max-width: 600px)" srcset="dist/banner-phone.svg">\n', '')),
+    'banner-wellformed': (c) => svg(c, 'dist/banner-phone.svg', (s) => s.replace('</svg>', '<g></svg>')),
+    'banner-viewbox': (c) => svg(c, 'dist/banner-phone.svg', (s) => s.replace('viewBox="0 0 640 320"', 'viewBox="0 0 1200 300"')),
+    'banner-size': (c) => svg(c, 'dist/banner-desktop.svg', (s) => s.replace('</svg>', `<!-- ${'x'.repeat(601 * 1024)} --></svg>`)),
+    'banner-csp-safe': (c) => svg(c, 'dist/banner-desktop.svg', (s) => s.replace('</svg>', '<image href="https://example.com/a.png"/></svg>')),
+    'banner-animated': (c) => svg(c, 'dist/banner-phone.svg', (s) => s.replace(/@keyframes /g, '@frames ')),
+    'banner-reduced-motion': (c) => svg(c, 'dist/banner-desktop.svg', (s) => s.replace(/@media \(prefers-reduced-motion:\s*reduce\)/, '@media print')),
     'readme-line-first': (c) => md(c, (m) => m.replace('</picture></p>\n', '</picture></p>\n\nHi!\n')),
     'readme-one-heading': (c) => md(c, (m) => m.replace('</picture></p>\n', '</picture></p>\n## About me\n')),
     'readme-tiles': (c) => md(c, (m) => m.replace(/<a href="[^"]+pull\/2"><img [^>]+><\/a>\n/, '')),
@@ -188,4 +198,21 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     if (!runRules(c).some((p) => p.startsWith(`[${id}] `))) wrong.push(`${id}: not refused by its own rule`);
   }
   assert.deepEqual(wrong, []);
+});
+
+test("M1.T4b: banner-csp-safe refuses each construct GitHub's image CSP blocks, and allows in-file url(#id) and href=\"#id\"", async () => {
+  const { context, runRules } = await import(join(ROOT, 'scripts', 'check.mjs'));
+  const base = context(built());
+  assert.deepEqual(runRules(base), []);
+  const s = base.expected['dist/banner-desktop.svg'];
+  assert.match(s, /url\(#/, 'the banner uses in-file url(#id)');
+  assert.match(s, /href="#/, 'the banner uses in-file href="#id"');
+  const missed = [];
+  for (const bad of ['<script>x()</script>', '<image href="#a"/>', '<foreignObject/>', '<rect fill="url(https://example.com/p.svg#x)"/>', '<use href="https://example.com/a.svg#x"/>',
+    '<use xlink:href="other.svg#x"/>', '<style>@import "x.css";</style>', '<style>@font-face{font-family:x;src:local(x)}</style>', '<a href="javascript:alert(1)"/>', '<rect fill="url(data:image/png;base64,AAAA)"/>']) {
+    const c = structuredClone(base);
+    c.expected['dist/banner-desktop.svg'] = s.replace('</svg>', `${bad}</svg>`);
+    if (!runRules(c).some((p) => p.startsWith('[banner-csp-safe] '))) missed.push(bad);
+  }
+  assert.deepEqual(missed, []);
 });

@@ -37,13 +37,13 @@ test('M1.T6a: profile.json holds one short line that links SkyBuds, and every fa
   for (const f of intro.facts) assert.match(f.source, /^https:\/\//, f.text);
 });
 
-test('M1.T6a: the README leads with the header art, then profile.json\'s line, and passes the copy rules', () => {
+test('M1.T6a: the README leads with the banner, then profile.json\'s line, and passes the copy rules', () => {
   const out = tmp('readme-');
   assert.equal(render(out).status, 0);
   const md = readme(out);
   const c = check(out);
   assert.equal(c.status, 0, c.stderr);
-  assert.ok(md.startsWith('<p align="center"><picture>'), 'header art first');
+  assert.ok(md.startsWith('<p align="center"><picture>\n<source media="(max-width: 600px)" srcset="dist/banner-phone.svg">\n<img src="dist/banner-desktop.svg" alt="'), 'the banner first');
   assert.ok(md.includes(`</picture></p>\n\n${profile.intro.line.text}\n`), 'the line right under the art');
   assert.ok(!/^#/m.test(md), 'no heading');
 });
