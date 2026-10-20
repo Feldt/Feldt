@@ -109,6 +109,31 @@ test('M1.T4b: the banner inputs are the three public renders at 480 px on the lo
   }
 });
 
+// the generator's own edge cases, which the committed renders never reach
+test('M1.T4b: the PNG decoder refuses a file that is not a PNG and any PNG but 8-bit RGBA, naming why', async () => {
+  const { decodePng } = await import('../scripts/banner/png.mjs');
+  assert.throws(() => decodePng(Buffer.from('GIF89a, not a PNG')), /not a PNG/);
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(1, 0); ihdr.writeUInt32BE(1, 4); ihdr[8] = 8; ihdr[9] = 2; // 8-bit RGB
+  const len = Buffer.alloc(4); len.writeUInt32BE(13);
+  const rgb = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), len, Buffer.from('IHDR', 'latin1'), ihdr, Buffer.alloc(4)]);
+  assert.throws(() => decodePng(rgb), /unsupported PNG \(depth 8, colour type 2, interlace 0\): 8-bit RGBA only/);
+});
+
+test('M1.T4b: silhouettes split at a pinch point (two pixels touching at a corner) into one loop per pixel', async () => {
+  const { traceLoops, maskPath } = await import('../scripts/banner/contour.mjs');
+  assert.deepEqual(traceLoops((x, y) => x === y, 2, 2), [[[0, 0], [0, 1], [1, 1], [1, 0]], [[1, 1], [1, 2], [2, 2], [2, 1]]]);
+  assert.deepEqual(traceLoops((x, y) => x + y === 1, 2, 2), [[[1, 0], [1, 1], [2, 1], [2, 0]], [[0, 1], [0, 2], [1, 2], [1, 1]]]);
+  assert.equal((maskPath((x, y) => x === y, 2, 2, { minArea: 1 }).match(/z/g) || []).length, 2);
+});
+
+test('M1.T4b: quantising no more colours than palette slots keeps each colour as its own class', async () => {
+  const { quantize } = await import('../scripts/banner/quant.mjs');
+  const q = quantize([[255, 0, 0], [0, 0, 255], [255, 0, 0]], 3);
+  assert.deepEqual(q.centers, [[255, 0, 0], [0, 0, 255]]);
+  assert.equal(q.index([0, 0, 255]), 1);
+  assert.equal(q.index([255.2, 0, 0]), 0);
+});
+
 test('M1.T2: profile.json names the Bud art by a public getskybuds.com URL that answers 200 logged out', async () => {
   const { bud } = profile();
   assert.match(bud.source.url, /^https:\/\/getskybuds\.com\//);

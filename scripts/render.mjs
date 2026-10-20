@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// render.mjs --out <dir>: profile.json -> <dir>/dist/*.svg + <dir>/README.md. No dependencies, deterministic.
+// render.mjs --out <dir>: profile.json + assets/buds/ -> <dir>/dist/*.svg + <dir>/README.md. No dependencies, deterministic.
 // When <dir>/data.json exists (data.mjs ran first, as in the Action), the README adds the PR cards it wrote.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildLoop, loopSvg } from './frames.mjs';
+import { buildBanner } from './banner/banner.mjs';
 import { W as TILE_W } from './tiles/tiles.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const BUDS_DIR = join(ROOT, 'assets', 'buds');
 
 export const attr = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -15,13 +16,16 @@ export const attr = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').repl
 // One linked tile per line: GitHub joins the lines with a space, so two 408 px tiles share a row in the ~838 px
 // desktop column, and on a phone each shrinks to the column (max-width: 100%), one per row.
 export const tileLink = (p) => `<a href="${attr(p.url)}"><img src="${attr(p.tile)}" alt="${attr(`${p.repo}#${p.number} ${p.state}: ${p.title}`)}" width="${TILE_W}"></a>`;
-// the themed header: [media, file] sources in order, then the light fallback; check.mjs requires the same
-export const HEADER_SOURCES = [
-  ['(max-width: 600px) and (prefers-color-scheme: dark)', 'dist/header-mobile-dark.svg', 'dark'],
-  ['(max-width: 600px)', 'dist/header-mobile-light.svg', 'light'],
-  ['(prefers-color-scheme: dark)', 'dist/header-dark.svg', 'dark'],
+// the banner: one scene for both colour schemes (it has its own sky and rounded corners), the phone crop under
+// 600 px; reduced motion is the SVG's own media query. check.mjs requires exactly this <picture>.
+export const BANNER_PHONE = 'dist/banner-phone.svg', BANNER_DESKTOP = 'dist/banner-desktop.svg';
+export const BANNER_ALT = 'Ash, Pearl and Sprout, the three SkyBuds, bouncing a beach ball under a rainbow in a flower meadow, in animated colour ASCII';
+export const BANNER_PICTURE = [
+  '<p align="center"><picture>',
+  `<source media="(max-width: 600px)" srcset="${BANNER_PHONE}">`,
+  `<img src="${BANNER_DESKTOP}" alt="${attr(BANNER_ALT)}" width="100%">`,
+  '</picture></p>',
 ];
-export const HEADER_FALLBACK = ['dist/header-light.svg', 'light'];
 
 // the open-source section: one linked tile per PR, from data.mjs's data.json (tiles only, D22; no heading: the
 // tiles say what they are)
@@ -33,19 +37,9 @@ function cards(data) {
 // Every file render publishes, as { path: body }, from profile.json and data.json (null before data.mjs has run).
 // check.mjs re-runs this and requires the published bytes to match, so nothing else can be published.
 export function renderFiles(profile, data) {
-  const src = join(ROOT, profile.bud.source.file), tagline = profile.header?.tagline || '';
-  // desktop keeps the finer grid; 72 columns keep glyphs >= 6 px in a 375 px phone's 343 px column
-  const grids = { '': buildLoop({ src, cols: 96 }), 'mobile-': buildLoop({ src, cols: 72 }) };
-  const files = {};
-  for (const [prefix, loop] of Object.entries(grids)) for (const theme of ['dark', 'light']) {
-    files[`dist/header-${prefix}${theme}.svg`] = loopSvg(loop, { theme, tagline });
-  }
-  const alt = attr(`${profile.bud.name}, a SkyBuds plush, in animated colour ASCII`);
+  const files = { [BANNER_DESKTOP]: buildBanner('desktop', BUDS_DIR), [BANNER_PHONE]: buildBanner('phone', BUDS_DIR) };
   files['README.md'] = [
-    '<p align="center"><picture>',
-    ...HEADER_SOURCES.map(([media, file]) => `<source media="${media}" srcset="${file}">`),
-    `<img src="${HEADER_FALLBACK[0]}" alt="${alt}" width="100%">`,
-    '</picture></p>',
+    ...BANNER_PICTURE,
     '',
     profile.intro.line.text,
     '',

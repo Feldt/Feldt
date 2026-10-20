@@ -9,9 +9,6 @@
     },
     "animation": "2d-warp"
   },
-  "header": {
-    "tagline": "I build SkyBuds: plush friends kids talk with"
-  },
   "intro": {
     "line": {
       "text": "I make [AI plush companions](https://getskybuds.com) for curious kids.",

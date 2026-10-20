@@ -1,4 +1,18 @@
 {
+ "scripts/spike.mjs": [
+  "<module>|if (!out) { console.error('usage: spike.mjs --out <dir> [--cols n] [--src png]'); process.exit(2); }",
+  "decodePng|const bpp = type === 6 ? 4 : 3, stride = w * bpp, raw = inflateSync(Buffer.concat(idat));",
+  "decodePng|if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error('not a PNG');",
+  "decodePng|if (depth !== 8 || inter !== 0 || (type !== 6 && type !== 2)) throw new Error(`unsupported PNG (depth ${depth}, type ${type}, interlace ${inter})`);",
+  "decodePng|px[o] = cur[x * bpp]; px[o + 1] = cur[x * bpp + 1]; px[o + 2] = cur[x * bpp + 2]; px[o + 3] = bpp === 4 ? cur[x * bpp + 3] : 255;",
+  "index|kept.forEach((p, j) => { const d = p.rgb.reduce((s, v, t) => s + (v - c[t]) ** 2, 0); if (d < bd) { bd = d; best = j; } });",
+  "index|let best = 0, bd = Infinity;",
+  "index|return best;"
+ ],
+ "scripts/banner/png.mjs": [],
+ "scripts/banner/contour.mjs": [],
+ "scripts/banner/quant.mjs": [],
+ "scripts/banner/color.mjs": [],
  "scripts/check.mjs": [
   "(anonymous)|&& Array.isArray(p.intro.facts) && p.intro.facts.every((f) => keysOf(f || {}) === 'source,text' && isStr(f.text) && isStr(f.source));",
   "(anonymous)|{ id: 'prs-ordered', layer: 'data', test: (ctx) => { const p = prsOf(ctx); return p.every((x, i) => i === 0 || p[i - 1].created.localeCompare(x.created) < 0 || (p[i - 1].created === x.created && p[i - 1].url.localeCompare(x.url) < 0)) ? null : 'PRs are not in created order'; } },",
@@ -29,20 +43,12 @@
   "<module>|if (!out) { console.error('usage: render.mjs --out <dir>'); process.exit(2); }",
   "renderFiles|...(profile.intro.facts.length ? [...profile.intro.facts.map((f) => `- ${f.text}`), ''] : []),"
  ],
- "scripts/frames.mjs": [
-  "<module>|if (!out) { console.error('usage: frames.mjs --out <dir> [--cols n]'); process.exit(2); }",
-  "rowText|if (!runs.length) return `<text y=\"${+((y + 1) * lh).toFixed(2)}\"${cls}></text>`;"
- ],
- "scripts/spike.mjs": [
-  "<module>|if (!out) { console.error('usage: spike.mjs --out <dir> [--cols n] [--src png]'); process.exit(2); }",
-  "decodePng|const bpp = type === 6 ? 4 : 3, stride = w * bpp, raw = inflateSync(Buffer.concat(idat));",
-  "decodePng|if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error('not a PNG');",
-  "decodePng|if (depth !== 8 || inter !== 0 || (type !== 6 && type !== 2)) throw new Error(`unsupported PNG (depth ${depth}, type ${type}, interlace ${inter})`);",
-  "decodePng|px[o] = cur[x * bpp]; px[o + 1] = cur[x * bpp + 1]; px[o + 2] = cur[x * bpp + 2]; px[o + 3] = bpp === 4 ? cur[x * bpp + 3] : 255;",
-  "index|kept.forEach((p, j) => { const d = p.rgb.reduce((s, v, t) => s + (v - c[t]) ** 2, 0); if (d < bd) { bd = d; best = j; } });",
-  "index|let best = 0, bd = Infinity;",
-  "index|return best;"
- ],
+ "scripts/banner/banner.mjs": [],
+ "scripts/banner/buds.mjs": [],
+ "scripts/banner/ascii.mjs": [],
+ "scripts/banner/masks.mjs": [],
+ "scripts/banner/scene.mjs": [],
+ "scripts/banner/svgtext.mjs": [],
  "scripts/tiles/tiles.mjs": [
   "fetchAvatar|if (!res.ok) throw new Error(`avatar ${org}: ${res.status}`);",
   "logoFor|const buf = cached && existsSync(cached) ? readFileSync(cached) : await fetchAvatar(org, { base: base || AVATARS, ...opts });",

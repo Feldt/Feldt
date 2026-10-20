@@ -7,12 +7,12 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 import { createHash } from 'node:crypto';
-import { attr, tileLink, renderFiles, HEADER_SOURCES, HEADER_FALLBACK } from './render.mjs';
+import { tileLink, renderFiles, BANNER_PICTURE, BANNER_PHONE, BANNER_DESKTOP } from './render.mjs';
 import { unrle } from './tiles/lib/logo.mjs';
 import { QUERY, statsOf, tileOf, dataFiles, dataJson } from './data.mjs';
-import { THEMES, rgbOf, contrast } from './frames.mjs';
 
-export const MAX_SVG = 150 * 1024;
+export const MAX_SVG = 150 * 1024, MAX_BANNER = 600 * 1024;
+const KB = (n) => `${n / 1024} KB`;
 
 // The five XML entities and character references; anything else after & is not well-formed.
 const ENTITY = /^&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);/;
@@ -58,11 +58,11 @@ export function xmlProblem(s) {
 const SVG_ROOT = /^(?:\s*<\?xml[^>]*\?>)?(?:\s*<!--[\s\S]*?-->)*\s*<svg[\s>]/;
 const SVG_NS = /^[^>]*\sxmlns\s*=\s*(["'])http:\/\/www\.w3\.org\/2000\/svg\1/;
 
-// One published SVG: an SVG root in the SVG namespace, well-formed, at most 150 KB.
-export function svgProblems(path, label) {
+// One published SVG: an SVG root in the SVG namespace, well-formed, at most `max` bytes (150 KB; a banner 600 KB).
+export function svgProblems(path, label, max = MAX_SVG) {
   const body = readFileSync(path, 'utf8'), problems = [], size = statSync(path).size;
   if (!SVG_ROOT.test(body)) return [`${label}: not an SVG`];
-  if (size > MAX_SVG) problems.push(`${label}: ${size} bytes, over 150 KB`);
+  if (size > max) problems.push(`${label}: ${size} bytes, over ${KB(max)}`);
   if (!SVG_NS.test(body.slice(body.indexOf('<svg')))) problems.push(`${label}: <svg> lacks the SVG namespace`);
   const x = xmlProblem(body);
   if (x) problems.push(`${label}: not well-formed XML (${x})`);
@@ -95,9 +95,8 @@ const bad = (items, why) => (items.length ? `${why}: ${items.slice(0, 3).join(',
 // profile.json, exact keys and types (unknown keys refused, so no field reaches render.mjs unchecked)
 function profileShape(p) {
   const s = p?.bud?.source;
-  return keysOf(p || {}) === 'bud,header,intro' && keysOf(p.bud || {}) === 'animation,name,source' && isStr(p.bud.name) && isStr(p.bud.animation)
+  return keysOf(p || {}) === 'bud,intro' && keysOf(p.bud || {}) === 'animation,name,source' && isStr(p.bud.name) && isStr(p.bud.animation)
     && keysOf(s || {}) === 'file,note,sha256,url' && [s.file, s.note, s.sha256, s.url].every(isStr)
-    && keysOf(p.header || {}) === 'tagline' && isStr(p.header.tagline)
     && keysOf(p.intro || {}) === 'facts,line' && keysOf(p.intro.line || {}) === 'source,text' && isStr(p.intro.line.text) && isStr(p.intro.line.source)
     && Array.isArray(p.intro.facts) && p.intro.facts.every((f) => keysOf(f || {}) === 'source,text' && isStr(f.text) && isStr(f.source));
 }
@@ -113,11 +112,16 @@ function dataShape(d) {
 }
 const prsOf = (ctx) => (ctx.dataOk ? ctx.data.prs : []);
 const README = (ctx) => ctx.expected?.['README.md'] ?? '';
-const headers = (ctx) => [...HEADER_SOURCES.map(([, f, t]) => [f, t]), HEADER_FALLBACK].filter(([f]) => ctx.expected?.[f]);
+// the two banners and their viewBoxes; banners(ctx) gives [file, body, viewBox] for each one the render made
+const BANNERS = [[BANNER_DESKTOP, '0 0 1200 300'], [BANNER_PHONE, '0 0 640 320']];
+const banners = (ctx) => BANNERS.filter(([f]) => isStr(ctx.expected?.[f])).map(([f, vb]) => [f, ctx.expected[f], vb]);
 const TILE_LINE = /^<a href="[^"]*"><img src="dist\/mission\//;
 const introLines = (md) => { const l = md.split('\n'), i = l.findIndex((x) => /<\/picture>/.test(x)) + 1, e = l.findIndex((x, k) => k >= i && TILE_LINE.test(x)); return l.slice(i, e < 0 ? undefined : e); };
 // a tile must stay inside GitHub's image CSP: no scripts, images, fonts or text elements, references inside the file only
 const CSP_UNSAFE = /<(?:script|image|img|foreignObject|iframe|text|font)\b|@import|@font-face|javascript:|\shref="(?!#)|url\((?!#)/i;
+// a banner draws with <text> in system monospace fonts, otherwise the same: nothing loaded, nothing run, no data:
+// URIs, every url() and href inside the file
+const BANNER_UNSAFE = /<(?:script|image|img|foreignObject|iframe|object|embed|audio|video)\b|@import|@font-face|data:|javascript:|\s(?:xlink:)?href\s*=\s*["'](?!#)|\ssrc\s*=|url\(\s*(?!["']?#)/i;
 
 export const RULES = [
   // the published files are exactly the render of the published inputs
@@ -134,8 +138,7 @@ export const RULES = [
   { id: 'profile-line-plain', layer: 'profile', test: (ctx) => (plain(ctx.profile?.intro?.line?.text) ? null : 'the intro line is not one plain line (no heading, no HTML)') },
   { id: 'profile-facts-sourced', layer: 'profile', test: (ctx) => bad((ctx.profile?.intro?.facts || []).filter((f) => !/^https:\/\//.test(f.source)).map((f) => f.text), 'facts without an https source') },
   { id: 'profile-facts-plain', layer: 'profile', test: (ctx) => bad((ctx.profile?.intro?.facts || []).filter((f) => !plain(f.text)).map((f) => f.text), 'facts that are not one plain line') },
-  { id: 'profile-brand-only', layer: 'profile', test: (ctx) => (LEGAL.test(JSON.stringify([ctx.profile?.intro, ctx.profile?.header, ctx.profile?.bud?.name])) ? 'a legal entity name in the profile copy (brand name only)' : null) },
-  { id: 'profile-tagline-short', layer: 'profile', test: (ctx) => { const t = ctx.profile?.header?.tagline; return isStr(t) && t.length >= 1 && t.length <= 48 && plain(t) ? null : 'the header tagline is not one plain line of 1 to 48 characters'; } },
+  { id: 'profile-brand-only', layer: 'profile', test: (ctx) => (LEGAL.test(JSON.stringify([ctx.profile?.intro, ctx.profile?.bud?.name])) ? 'a legal entity name in the profile copy (brand name only)' : null) },
   // data.json (absent before data.mjs has run; then the README has no cards)
   { id: 'data-shape', layer: 'data', test: (ctx) => (!ctx.data || ctx.dataOk ? null : 'data.json keys or types are not the known shape') },
   { id: 'data-canonical', layer: 'data', test: (ctx) => (!ctx.dataOk || ctx.dataRaw === dataJson(ctx.data) ? null : 'data.json is not as data.mjs writes it') },
@@ -152,21 +155,19 @@ export const RULES = [
   { id: 'svg-root', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.endsWith('.svg') && !(SVG_ROOT.test(b) && SVG_NS.test(b.slice(b.indexOf('<svg'))))).map(([f]) => f), 'SVGs without an <svg> root in the SVG namespace') },
   { id: 'svg-wellformed', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.endsWith('.svg') && xmlProblem(b)).map(([f, b]) => `${f} (${xmlProblem(b)})`), 'SVGs that are not well-formed XML') },
   { id: 'tile-csp-safe', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.startsWith('dist/mission/') && CSP_UNSAFE.test(b)).map(([f]) => f), "tiles GitHub's image CSP would break") },
-  { id: 'svg-size', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.endsWith('.svg') && Buffer.byteLength(b) > MAX_SVG).map(([f]) => f), 'SVGs over 150 KB') },
+  { id: 'svg-size', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.endsWith('.svg') && !BANNERS.some(([x]) => x === f) && Buffer.byteLength(b) > MAX_SVG).map(([f]) => f), 'SVGs other than the banners over 150 KB') },
   { id: 'readme-refs-resolve', layer: 'output', test: (ctx) => bad(imageRefs(README(ctx)).filter(local).map(clean).filter((r) => !(r in (ctx.expected || {}))), 'README images that are not rendered') },
   { id: 'readme-alts', layer: 'output', test: (ctx) => bad([...README(ctx).matchAll(/<img\b[^>]*>/g)].map((m) => m[0]).filter((t) => !/\salt="[^"]+"/.test(t)).map((t) => t.slice(0, 60)), 'README images without alt text') },
   { id: 'readme-html', layer: 'output', test: (ctx) => bad([...README(ctx).matchAll(/<(?:img|a|source|picture|p)\b[^\n]*?>/g)].map((m) => m[0]).filter((t) => !/^<(?:img|a|source|picture|p)(?:\s+[\w-]+="[^"<>]*")*\s*\/?>$/.test(t)).map((t) => t.slice(0, 60)), 'malformed README tags') },
-  { id: 'header-picture', layer: 'output', test: (ctx) => {
-    const pic = /^<p align="center"><picture>\n([\s\S]*?)\n<\/picture><\/p>\n/.exec(README(ctx));
-    const want = [...HEADER_SOURCES.map(([m, f]) => `<source media="${m}" srcset="${f}">`), `<img src="${HEADER_FALLBACK[0]}" alt="`];
-    const got = pic ? pic[1].split('\n') : [];
-    return got.length === want.length && want.every((w, i) => got[i].startsWith(w)) && / width="100%">$/.test(got.at(-1)) ? null : 'the README does not open with the themed <picture> header';
-  } },
-  { id: 'header-contrast', layer: 'output', test: (ctx) => bad(headers(ctx).flatMap(([f, theme]) => [...ctx.expected[f].matchAll(/\.c\d+\{fill:#([0-9a-f]{6})\}/g)].filter((m) => contrast(rgbOf(m[1]), rgbOf(THEMES[theme].bg)) < 1.5).map((m) => `${f} #${m[1]}`)), 'Bud colours too close to the page') },
-  { id: 'header-mobile-glyphs', layer: 'output', test: (ctx) => bad(HEADER_SOURCES.filter(([m, f]) => /max-width/.test(m) && ctx.expected?.[f]).map(([, f]) => f).filter((f) => { const s = ctx.expected[f]; return Number(/font-size:([\d.]+)px/.exec(s)?.[1]) * Math.min(1, 343 / Number(/viewBox="0 0 ([\d.]+) /.exec(s)?.[1])) < 6; }), 'mobile headers with glyphs under 6 px at 375 px') },
-  { id: 'header-blink', layer: 'output', test: (ctx) => bad(headers(ctx).map(([f]) => f).filter((f) => !/<g class="f3">[\s\S]*?<text/.test(ctx.expected[f])), 'headers without the blink frame') },
-  { id: 'header-tagline', layer: 'output', test: (ctx) => bad(headers(ctx).map(([f]) => f).filter((f) => /<text id="tagline"[^>]*>([^<]*)<\/text>/.exec(ctx.expected[f])?.[1] !== ctx.profile?.header?.tagline), "headers whose tagline is not profile.json's") },
-  { id: 'readme-line-first', layer: 'output', test: (ctx) => (introLines(README(ctx)).find((l) => l.trim()) === ctx.profile?.intro?.line?.text ? null : "the first line under the header art is not profile.json's line") },
+  // the banner: exactly the centred <picture> render.mjs writes, and two well-formed, animated, CSP-safe SVGs
+  { id: 'banner-picture', layer: 'output', test: (ctx) => (README(ctx).startsWith(`${BANNER_PICTURE.join('\n')}\n`) && (README(ctx).match(/<picture>/g) || []).length === 1 ? null : 'the README does not open with the banner <picture> (phone source, desktop image)') },
+  { id: 'banner-wellformed', layer: 'output', test: (ctx) => bad([...BANNERS.filter(([f]) => !isStr(ctx.expected?.[f])).map(([f]) => `${f} not rendered`), ...banners(ctx).filter(([, b]) => !SVG_ROOT.test(b) || !SVG_NS.test(b.slice(b.indexOf('<svg'))) || xmlProblem(b)).map(([f, b]) => `${f} (${xmlProblem(b) || 'no <svg> root in the SVG namespace'})`)], 'banners that are not well-formed SVG') },
+  { id: 'banner-viewbox', layer: 'output', test: (ctx) => bad(banners(ctx).filter(([, b, vb]) => /<svg\b[^>]*\sviewBox="([^"]*)"/.exec(b)?.[1] !== vb).map(([f, , vb]) => `${f} (want ${vb})`), 'banners with the wrong viewBox') },
+  { id: 'banner-size', layer: 'output', test: (ctx) => bad(banners(ctx).filter(([, b]) => Buffer.byteLength(b) > MAX_BANNER).map(([f, b]) => `${f} (${Buffer.byteLength(b)} bytes)`), 'banners over 600 KB') },
+  { id: 'banner-csp-safe', layer: 'output', test: (ctx) => bad(banners(ctx).filter(([, b]) => BANNER_UNSAFE.test(b)).map(([f, b]) => `${f} (${BANNER_UNSAFE.exec(b)[0]})`), "banners GitHub's image CSP would break") },
+  { id: 'banner-animated', layer: 'output', test: (ctx) => bad(banners(ctx).filter(([, b]) => !/@keyframes [\w-]+\{/.test(b) || !/\{[^{}]*animation:[\w-]+ [\d.]+s/.test(b)).map(([f]) => f), 'banners without CSS keyframe animations') },
+  { id: 'banner-reduced-motion', layer: 'output', test: (ctx) => bad(banners(ctx).filter(([, b]) => !/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\*\s*\{\s*animation:\s*none\s*!important/.test(b)).map(([f]) => f), 'banners that keep moving under prefers-reduced-motion') },
+  { id: 'readme-line-first', layer: 'output', test: (ctx) => (introLines(README(ctx)).find((l) => l.trim()) === ctx.profile?.intro?.line?.text ? null : "the first line under the banner is not profile.json's line") },
   { id: 'readme-one-heading', layer: 'output', test: (ctx) => bad(README(ctx).split('\n').filter((l) => /^\s*#/.test(l)), 'README headings (the tiles need none)') },
   { id: 'readme-tiles', layer: 'output', test: (ctx) => { const md = README(ctx), p = prsOf(ctx); return p.every((x) => md.includes(tileLink(x))) && (md.match(/dist\/mission\//g) || []).length === p.length ? null : 'README does not show exactly one linked tile per PR'; } },
   { id: 'readme-cards-last', layer: 'output', test: (ctx) => { const md = README(ctx), m = md.search(/^<a href="[^"]*"><img src="dist\/mission\//m); return m < 0 || m > md.indexOf(ctx.profile?.intro?.line?.text) ? null : 'the PR cards are not after the intro line'; } },

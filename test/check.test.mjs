@@ -126,7 +126,7 @@ test('M1.T7a: every published file is covered byte for byte, and nothing unrende
   const good = await gateFixture();
   assert.deepEqual(gate(good), [], 'a good profile passes');
   const files = Object.keys(context(good).published);
-  assert.ok(files.length >= 7 && files.includes('README.md') && files.some((f) => f.startsWith('dist/mission/')), files.join(' '));
+  assert.ok(files.length >= 5 && files.includes('README.md') && files.includes('dist/banner-desktop.svg') && files.includes('dist/banner-phone.svg') && files.some((f) => f.startsWith('dist/mission/')), files.join(' '));
   const copy = () => { const o = tmp('gate-'); cpSync(good, o, { recursive: true }); return o; };
   const missed = [];
   for (const f of files) {
@@ -215,4 +215,19 @@ test("M1.T4b: banner-csp-safe refuses each construct GitHub's image CSP blocks, 
     if (!runRules(c).some((p) => p.startsWith('[banner-csp-safe] '))) missed.push(bad);
   }
   assert.deepEqual(missed, []);
+});
+
+test('M1.T4b: banner-wellformed refuses a banner the render did not make, one outside the SVG namespace, and one that is not well-formed', async () => {
+  const { context, runRules } = await import(join(ROOT, 'scripts', 'check.mjs'));
+  const base = context(built());
+  const cases = {
+    'not rendered': (c) => { delete c.expected['dist/banner-phone.svg']; },
+    'no <svg> root in the SVG namespace': (c) => { c.expected['dist/banner-desktop.svg'] = c.expected['dist/banner-desktop.svg'].replace(' xmlns="http://www.w3.org/2000/svg"', ''); },
+    'mismatched </svg>': (c) => { c.expected['dist/banner-desktop.svg'] = c.expected['dist/banner-desktop.svg'].replace('</svg>', '<g></svg>'); },
+  };
+  for (const [why, breakIt] of Object.entries(cases)) {
+    const c = structuredClone(base); breakIt(c);
+    const p = runRules(c).find((l) => l.startsWith('[banner-wellformed] '));
+    assert.ok(p && p.includes(why), `${why}: ${p}`);
+  }
 });
