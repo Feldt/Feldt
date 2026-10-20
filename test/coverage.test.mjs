@@ -15,7 +15,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const CAPS = {
   'scripts/check.mjs': [3, 34], 'scripts/data.mjs': [0, 6], 'scripts/frames.mjs': [0, 2], 'scripts/install-hooks.mjs': [3, 5],
   'scripts/leaks.mjs': [114, 29], 'scripts/render.mjs': [0, 4], 'scripts/spike.mjs': [3, 8],
-  'scripts/tiles/lib/logo.mjs': [9, 7], 'scripts/tiles/lib/png.mjs': [10, 12], 'scripts/tiles/tiles.mjs': [16, 15],
+  'scripts/tiles/lib/logo.mjs': [9, 7], 'scripts/tiles/lib/png.mjs': [10, 12], 'scripts/tiles/tiles.mjs': [10, 12],
 };
 
 const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') ? [join(d, e.name)] : []));

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
 import { homedir, userInfo } from 'node:os';
-import { tileSvg, fragment, wrap, ellipsize, measure, normalize, FONTS, DEMO, W, stateOf } from '../scripts/tiles/tiles.mjs';
+import { tileSvg, fragment, wrap, ellipsize, measure, normalize, FONTS, W, stateOf } from '../scripts/tiles/tiles.mjs';
 import { logoFromImage, logoFromPng, logoCells, rle, unrle } from '../scripts/tiles/lib/logo.mjs';
 import { decodePng } from '../scripts/tiles/lib/png.mjs';
 
@@ -28,6 +28,18 @@ function png(w, h, px) {
 }
 const sample = (x, y) => (x < 4 || x > 43 ? [0, 0, 0, 0] : x > 18 && x < 30 && y > 8 && y < 40 ? [255, 255, 255, 255] : [220, 30, 25, 255]);
 const PNG = png(48, 48, sample);
+
+// Fixture PRs: Fred's three open PRs, then synthetic ones (example-org) for a merged badge, a title that must
+// wrap and truncate, and a closed PR with a repo name too long for its line.
+const pr = (repo, number, title, state) => ({ repo, number, title, state, merged: state === 'merged', url: `https://github.com/${repo}/pull/${number}` });
+const PRS = [
+  pr('teslamotors/kafka-helmsman', 97, "Topic enforcer: don't try to decrease partition counts", 'open'),
+  pr('neuralink/tsui', 38, 'Fix machine details preview overflowing an 80 column terminal', 'open'),
+  pr('neuralinkcorp/datarepo', 84, 'Match contains filters as a literal substring', 'open'),
+  pr('example-org/merged-change', 1, 'A merged change with "double quotes" in its title', 'merged'),
+  pr('example-org/wrapping', 2, 'Add a fast path for rings that cross no pentagons and document the distortion bounds near the icosahedron edges in detail', 'open'),
+  pr('example-org/a-repository-name-far-too-long-to-fit-on-its-line', 123456, 'Closed without merging', 'closed'),
+];
 
 test('the PNG decoder reads every filter type back exactly', () => {
   const im = decodePng(PNG);
@@ -55,7 +67,7 @@ const logo = logoFromPng(PNG);
 // machine-local markers are read at run time, so this file never holds the home path, user name or a LAN host
 const LOCAL = [homedir(), userInfo().username].filter((s) => s && s.length > 3);
 const LAN = new RegExp(['\\.', 'lan', '\\b'].join(''));
-const tiles = DEMO.map((p, i) => tileSvg(p, { index: i, logo: i % 2 ? logo : null }));
+const tiles = PRS.map((p, i) => tileSvg(p, { index: i, logo: i % 2 ? logo : null }));
 
 test('tiles pass GitHub\'s image CSP: no scripts, images, fonts, text elements or outside references', () => {
   for (const t of tiles) {
@@ -85,15 +97,17 @@ test('tiles are well-formed: balanced tags, every used glyph defined once', () =
 });
 
 test('tiles are deterministic and say what they show', () => {
-  assert.equal(tileSvg(DEMO[0], { index: 0, logo }), tileSvg(DEMO[0], { index: 0, logo }));
+  assert.equal(tileSvg(PRS[0], { index: 0, logo }), tileSvg(PRS[0], { index: 0, logo }));
   assert.match(tiles[0], /aria-label="teslamotors\/kafka-helmsman#97 open: Topic enforcer: don&#39;t|aria-label="teslamotors\/kafka-helmsman#97 open: Topic enforcer: don't/);
-  assert.match(tiles[3], /MERGED|<use/);
+  assert.match(tiles[3], /#8b4dff/, 'merged badge');
+  assert.match(tiles[5], /#d4283b/, 'closed badge');
+  assert.match(tiles[3], /aria-label="[^"]*&quot;double quotes&quot;/);
   assert.equal(stateOf({ state: 'closed', merged: '2026-01-01' }), 'merged');
 });
 
 test('long titles wrap to two lines and end in an ellipsis inside the column', () => {
   const f = FONTS.body, max = 270;
-  const long = wrap(normalize(DEMO[4].title), f, 15, max, 2);
+  const long = wrap(normalize(PRS[4].title), f, 15, max, 2);
   assert.equal(long.length, 2);
   assert.ok(long[1].endsWith('…'));
   for (const l of long) assert.ok(measure(l, f, 15) <= max, l);
@@ -105,9 +119,9 @@ test('long titles wrap to two lines and end in an ellipsis inside the column', (
 });
 
 test('the fragment is one linked tile per PR, 408 wide, two to a desktop row', () => {
-  const html = fragment(DEMO);
+  const html = fragment(PRS);
   const links = html.trim().split('\n');
-  assert.equal(links.length, DEMO.length);
-  links.forEach((l, i) => assert.equal(l, `<a href="${DEMO[i].url}"><img src="dist/mission/${DEMO[i].repo.replace('/', '--').toLowerCase()}-${DEMO[i].number}.svg" alt="${DEMO[i].repo}#${DEMO[i].number} ${stateOf(DEMO[i])}: ${DEMO[i].title.replace(/"/g, '&quot;')}" width="${W}"></a>`));
+  assert.equal(links.length, PRS.length);
+  links.forEach((l, i) => assert.equal(l, `<a href="${PRS[i].url}"><img src="dist/mission/${PRS[i].repo.replace('/', '--').toLowerCase()}-${PRS[i].number}.svg" alt="${PRS[i].repo}#${PRS[i].number} ${stateOf(PRS[i])}: ${PRS[i].title.replace(/"/g, '&quot;')}" width="${W}"></a>`));
   assert.ok(2 * W + 6 <= 838, 'two tiles and a space fit the desktop README column');
 });

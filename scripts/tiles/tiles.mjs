@@ -1,9 +1,7 @@
-#!/usr/bin/env node
 // tiles.mjs: one candy-coloured tile per open-source PR, for the github.com/Feldt profile README.
 //
 //   import { tileSvg, logoFor, fragment, writeTiles } from './tiles.mjs'
 //   await writeTiles(prs, outDir)        // fetches each org's avatar, writes <outDir>/<tile files> + fragment.html
-//   node tiles.mjs --demo <outDir>       // the demo set, avatars from cache/avatars when present
 //
 // A PR is { repo: 'owner/name', number, title, state: 'open' | 'merged' | 'closed', merged?, url }.
 // Each tile is one self-contained SVG that passes GitHub's image CSP (default-src 'none'; style-src
@@ -12,7 +10,7 @@
 // every OS and long titles truncate at exact widths. Animation is CSS only (a pulse on open, a shine on merged,
 // a slow glint on the logo) and stops under prefers-reduced-motion. No dependencies beyond node itself.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logoFromPng, logoCells } from './lib/logo.mjs';
 
@@ -263,23 +261,4 @@ export async function writeTiles(prs, outDir, { cacheDir = null, logos = {}, dir
   });
   writeFileSync(join(outDir, 'fragment.html'), fragment(prs, dir));
   return { files, logos };
-}
-
-// ---- demo -------------------------------------------------------------------------------------------------------
-export const DEMO = [
-  { repo: 'teslamotors/kafka-helmsman', number: 97, title: "Topic enforcer: don't try to decrease partition counts", state: 'open', merged: false, url: 'https://github.com/teslamotors/kafka-helmsman/pull/97' },
-  { repo: 'neuralink/tsui', number: 38, title: 'Fix machine details preview overflowing an 80 column terminal', state: 'open', merged: false, url: 'https://github.com/neuralink/tsui/pull/38' },
-  { repo: 'neuralinkcorp/datarepo', number: 84, title: 'Match contains filters as a literal substring', state: 'open', merged: false, url: 'https://github.com/neuralinkcorp/datarepo/pull/84' },
-  // hypothetical PRs, only to exercise the grid (merged badge, long repo name, long title)
-  { repo: 'nasa/fprime', number: 3912, title: 'CmdSequencer: Reject sequences with zero records', state: 'merged', merged: true, url: 'https://github.com/nasa/fprime/pull/3912' },
-  { repo: 'uber/h3', number: 1007, title: 'Add gridRingUnsafe fast path for pentagon-free rings and document the distortion bounds near icosahedron edges', state: 'open', merged: false, url: 'https://github.com/uber/h3/pull/1007' },
-  { repo: 'NVIDIA/nvidia-container-toolkit', number: 1240, title: 'Skip missing CDI spec directories instead of failing', state: 'open', merged: false, url: 'https://github.com/NVIDIA/nvidia-container-toolkit/pull/1240' },
-];
-
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = process.argv.slice(2), i = args.indexOf('--demo');
-  if (i < 0) { console.error('usage: tiles.mjs --demo <outDir>'); process.exit(2); }
-  const out = resolve(args[i + 1] || join(HERE, 'demo'));
-  const { files } = await writeTiles(DEMO, out, { cacheDir: join(HERE, 'cache', 'avatars') });
-  for (const f of files) console.log(f, readFileSync(join(out, f)).length, 'bytes');
 }
