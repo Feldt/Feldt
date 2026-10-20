@@ -1,6 +1,6 @@
 // M1.T6/T6a README: the header art, then profile.json's one line linking SkyBuds (D20), any fact line sourced in
 // profile.json, brand name only, then the open-source cards with one linked tile per PR from data.json.
-// README_URL=<raw README url> also runs the copy checks on the live README.
+// README_RAW=<raw base url at one sha> also checks the live README equals the render of the live data.json.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -9,7 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmp, run } from './helpers.mjs';
 import { build } from '../scripts/data.mjs';
-import { copyProblems } from '../scripts/check.mjs';
+import { liveProblems } from '../scripts/check.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
@@ -41,7 +41,8 @@ test('M1.T6a: the README leads with the header art, then profile.json\'s line, a
   const out = tmp('readme-');
   assert.equal(render(out).status, 0);
   const md = readme(out);
-  assert.deepEqual(copyProblems(md), []);
+  const c = check(out);
+  assert.equal(c.status, 0, c.stderr);
   assert.ok(md.startsWith('<p align="center"><picture>'), 'header art first');
   assert.ok(md.includes(`</picture></p>\n\n${profile.intro.line.text}\n`), 'the line right under the art');
   assert.ok(!/^#{1,3} (?!Open-source missions)/m.test(md), 'no other heading');
@@ -84,8 +85,8 @@ test('M1.T6: without data.json (first render) the README has no card section and
   assert.equal(check(out).status, 0, check(out).stderr);
 });
 
-test('M1.T6: the live README passes the same copy checks', { skip: !process.env.README_URL && 'set README_URL to check the live README' }, async () => {
-  const res = await fetch(process.env.README_URL);
-  assert.equal(res.status, 200);
-  assert.deepEqual(copyProblems(await res.text()), []);
+test('M1.T6: the live README is the render of the live data.json and profile', { skip: !process.env.README_RAW && 'set README_RAW to check the live README' }, async () => {
+  const get = async (f) => { const res = await fetch(`${process.env.README_RAW}/${f}`); assert.equal(res.status, 200, f); return res.text(); };
+  const [md, data, live] = await Promise.all([get('README.md'), get('data.json'), get('profile.json')]);
+  assert.deepEqual(liveProblems(md, JSON.parse(data), JSON.parse(live)), []);
 });

@@ -23,9 +23,9 @@ export const HEADER_FALLBACK = ['dist/header-light.svg', 'light'];
 export const MISSIONS = '## Open-source missions';
 
 // the open-source section: stat chips, the trajectory and one linked tile per PR, from data.mjs's data.json
-function cards(file) {
-  if (!existsSync(file)) return [];
-  const { stats, prs } = JSON.parse(readFileSync(file, 'utf8'));
+function cards(data) {
+  if (!data) return [];
+  const { stats, prs } = data;
   return [
     MISSIONS,
     '',
@@ -38,9 +38,9 @@ function cards(file) {
   ];
 }
 
-export function render(out, profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'))) {
-  const dist = join(out, 'dist');
-  mkdirSync(dist, { recursive: true });
+// Every file render publishes, as { path: body }, from profile.json and data.json (null before data.mjs has run).
+// check.mjs re-runs this and requires the published bytes to match, so nothing else can be published.
+export function renderFiles(profile, data) {
   const src = join(ROOT, profile.bud.source.file), tagline = profile.header?.tagline || '';
   // desktop keeps the finer grid; 72 columns keep glyphs >= 6 px in a 375 px phone's 343 px column
   const grids = { '': buildLoop({ src, cols: 96 }), 'mobile-': buildLoop({ src, cols: 72 }) };
@@ -58,8 +58,15 @@ export function render(out, profile = JSON.parse(readFileSync(join(ROOT, 'profil
     profile.intro.line.text,
     '',
     ...(profile.intro.facts.length ? [...profile.intro.facts.map((f) => `- ${f.text}`), ''] : []),
-    ...cards(join(out, 'data.json')),
+    ...cards(data),
   ].join('\n');
+  return files;
+}
+
+export function render(out, profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'))) {
+  const dataFile = join(out, 'data.json');
+  const files = renderFiles(profile, existsSync(dataFile) ? JSON.parse(readFileSync(dataFile, 'utf8')) : null);
+  mkdirSync(join(out, 'dist'), { recursive: true });
   for (const [p, body] of Object.entries(files)) writeFileSync(join(out, p), body);
   return Object.keys(files);
 }

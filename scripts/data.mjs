@@ -95,6 +95,12 @@ export function tileSvg(p) {
     + `<rect x="16" y="64" width="62" height="18" rx="9" fill="${colour}"/><text x="47" y="77" text-anchor="middle" class="s">${p.state}</text></svg>\n`;
 }
 
+// Every file data.mjs publishes besides data.json, as { path: body }; check.mjs re-runs it on data.json.
+export const dataFiles = ({ prs, stats }) => ({
+  'dist/stats.svg': statsSvg(stats), 'dist/trajectory.svg': trajectorySvg(prs), ...Object.fromEntries(prs.map((p) => [p.tile, tileSvg(p)])),
+});
+export const dataJson = ({ prs, stats }) => JSON.stringify({ query: QUERY, stats, prs }, null, 1) + '\n';
+
 export async function build(out, opts = {}) {
   const orgs = JSON.parse(readFileSync(join(ROOT, 'pr-rules.json'), 'utf8')).orgs;
   const { prs, stats } = shape(await fetchPrs(opts), orgs); // throws before anything is written
@@ -102,10 +108,8 @@ export async function build(out, opts = {}) {
   const stage = join(out, '.data-new'), old = join(out, '.data-old');
   for (const d of [stage, old]) rmSync(d, { recursive: true, force: true });
   mkdirSync(join(stage, 'dist', 'mission'), { recursive: true });
-  writeFileSync(join(stage, 'dist', 'stats.svg'), statsSvg(stats));
-  writeFileSync(join(stage, 'dist', 'trajectory.svg'), trajectorySvg(prs));
-  for (const p of prs) writeFileSync(join(stage, p.tile), tileSvg(p));
-  writeFileSync(join(stage, 'data.json'), JSON.stringify({ query: QUERY, stats, prs }, null, 1) + '\n');
+  for (const [f, body] of Object.entries(dataFiles({ prs, stats }))) writeFileSync(join(stage, f), body);
+  writeFileSync(join(stage, 'data.json'), dataJson({ prs, stats }));
   mkdirSync(join(out, 'dist'), { recursive: true });
   if (existsSync(join(out, 'dist', 'mission'))) renameSync(join(out, 'dist', 'mission'), old);
   for (const f of ['dist/mission', 'dist/stats.svg', 'dist/trajectory.svg', 'data.json']) renameSync(join(stage, f), join(out, f));

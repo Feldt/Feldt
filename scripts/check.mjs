@@ -1,16 +1,14 @@
 #!/usr/bin/env node
-// check.mjs <dir>: the one publish gate (D18). Every rule of the published profile is checked here, not only in
-// tests: the README shows at least one local SVG; every local image it references (html src in either quotes,
-// every srcset candidate, markdown) exists and is an SVG in the SVG namespace, well-formed XML and at most 150 KB;
-// so is every SVG in dist/; the SkyBuds copy follows profile.json; and with data.json, the mission log has one
-// linked tile per PR and nothing else. Exit 1 lists each problem.
+// check.mjs <dir>: the one publish gate (D18, D21). The published README.md and dist/** must be exactly the render
+// of the published inputs, and the inputs and that render must pass every rule in RULES. Exit 1 lists each problem.
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-import { attr, statsAlt, tileLink, HEADER_SOURCES, HEADER_FALLBACK, MISSIONS } from './render.mjs';
-import { statsOf, tileOf, statsSvg, trajectorySvg, tileSvg } from './data.mjs';
+import { createHash } from 'node:crypto';
+import { attr, statsAlt, tileLink, renderFiles, HEADER_SOURCES, HEADER_FALLBACK, MISSIONS } from './render.mjs';
+import { QUERY, statsOf, tileOf, dataFiles, dataJson } from './data.mjs';
 import { THEMES, rgbOf, contrast } from './frames.mjs';
 
 export const MAX_SVG = 150 * 1024;
@@ -79,112 +77,119 @@ export function imageRefs(md) {
   return [...new Set(refs)];
 }
 
-// The publish rules (D18). Each rule takes the rendered profile and returns its problems; check() runs them all.
-// The class test in test/check.test.mjs keeps one break per rule id, so a rule can't be dropped or added unseen.
-// Markup and numbers come from the code that makes them (render.mjs, data.mjs), never re-typed here.
+// The publish gate (D18, D21). Every published file is generated: the gate re-runs data.mjs's and render.mjs's
+// pure functions on the published inputs (profile.json, pr-rules.json, data.json) and requires README.md and
+// every file under dist/ to be byte-identical to that render, with nothing missing and nothing extra. What is
+// left to rule on is the inputs and the generator's output, one condition per rule, each with its own break in
+// the class test (test/check.test.mjs). A rule's test returns a problem string, or null when it holds.
 const local = (ref) => !/^(?:https?:|data:)/.test(ref);
 const clean = (ref) => ref.replace(/^\.?\//, '').split(/[?#]/)[0];
-const svgFiles = (dir, rel) => { const d = join(dir, rel); return existsSync(d) ? readdirSync(d).filter((n) => n.endsWith('.svg')).map((n) => `${rel}/${n}`) : []; };
-const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const walk = (dir, rel) => { const d = join(dir, rel); return existsSync(d) ? readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(dir, `${rel}/${e.name}`) : [`${rel}/${e.name}`])) : []; };
+const keysOf = (o) => Object.keys(o).sort().join(',');
+const isStr = (v) => typeof v === 'string';
+const plain = (t) => isStr(t) && !/[\n<]/.test(t) && !/^\s*#/.test(t);
+const LEGAL = /\b(Inc|LLC|Ltd|GmbH|ApS|Corp)\b/;
+const bad = (items, why) => (items.length ? `${why}: ${items.slice(0, 3).join(', ')}` : null);
 
-// the intro: the lines between the header art and the PR cards
-function intro(md) {
-  const lines = md.split('\n'), start = lines.findIndex((l) => /<\/picture>/.test(l)) + 1;
-  const end = lines.findIndex((l, i) => i >= start && l === MISSIONS);
-  return lines.slice(start, end < 0 ? undefined : end);
+// profile.json, exact keys and types (unknown keys refused, so no field reaches render.mjs unchecked)
+function profileShape(p) {
+  const s = p?.bud?.source;
+  return keysOf(p || {}) === 'bud,header,intro' && keysOf(p.bud || {}) === 'animation,name,source' && isStr(p.bud.name) && isStr(p.bud.animation)
+    && keysOf(s || {}) === 'file,note,sha256,url' && [s.file, s.note, s.sha256, s.url].every(isStr)
+    && keysOf(p.header || {}) === 'tagline' && isStr(p.header.tagline)
+    && keysOf(p.intro || {}) === 'facts,line' && keysOf(p.intro.line || {}) === 'source,text' && isStr(p.intro.line.text) && isStr(p.intro.line.source)
+    && Array.isArray(p.intro.facts) && p.intro.facts.every((f) => keysOf(f || {}) === 'source,text' && isStr(f.text) && isStr(f.source));
 }
-const facts = (md) => intro(md).filter((x) => /^- /.test(x)).map((x) => x.slice(2));
+// data.json, exact keys and types
+const PR_KEYS = 'created,merged,number,org,repo,state,tile,title,url';
+function dataShape(d) {
+  return keysOf(d || {}) === 'prs,query,stats' && isStr(d.query) && keysOf(d.stats || {}) === 'merged,open,orgs,prs,repos'
+    && Object.values(d.stats).every(Number.isInteger) && Array.isArray(d.prs)
+    && d.prs.every((p) => keysOf(p || {}) === PR_KEYS && Number.isInteger(p.number) && ['created', 'org', 'repo', 'state', 'tile', 'title', 'url'].every((k) => isStr(p[k])) && (p.merged === null || isStr(p.merged)));
+}
+const prsOf = (ctx) => (ctx.dataOk ? ctx.data.prs : []);
+const README = (ctx) => ctx.expected?.['README.md'] ?? '';
+const headers = (ctx) => [...HEADER_SOURCES.map(([, f, t]) => [f, t]), HEADER_FALLBACK].filter(([f]) => ctx.expected?.[f]);
+const introLines = (md) => { const l = md.split('\n'), i = l.findIndex((x) => /<\/picture>/.test(x)) + 1, e = l.indexOf(MISSIONS, i); return l.slice(i, e < 0 ? undefined : e); };
 
 export const RULES = [
-  // images: every local image the README shows exists and is a publishable SVG; so is every SVG we ship
-  { id: 'image-missing', run: ({ dir, refs }) => refs.filter((r) => !existsSync(join(dir, r))).map((r) => `README image missing: ${r}`) },
-  { id: 'image-svg', run: ({ dir, refs, files }) => [...new Set([...refs.filter((r) => existsSync(join(dir, r))), ...files])].flatMap((r) => svgProblems(join(dir, r), r)) },
-  { id: 'header-svg', run: ({ refs }) => (refs.some((r) => r.endsWith('.svg')) ? [] : ['README shows no local SVG image (the header)']) },
-  // the themed header: one <picture> at the top with the mobile and dark sources in order and the light fallback
-  { id: 'header-picture', run: ({ md }) => {
-    const pic = /^<p align="center"><picture>([\s\S]*?)<\/picture><\/p>/.exec(md);
-    if (!pic) return ['README does not open with the <picture> header'];
-    const got = [...pic[1].matchAll(/<source media="([^"]+)" srcset="([^"]+)">/g)].map((m) => [m[1], m[2]]);
-    const problems = sameJson(got, HEADER_SOURCES.map(([m, f]) => [m, f])) ? [] : [`header sources ${JSON.stringify(got)}`];
-    if (!new RegExp(`<img src="${HEADER_FALLBACK[0]}" alt="[^"]+"`).test(pic[1])) problems.push('header has no light fallback with alt text');
-    return problems;
+  // the published files are exactly the render of the published inputs
+  { id: 'published-is-rendered', layer: 'publish', test: (ctx) => {
+    if (!ctx.expected) return `cannot render the inputs: ${ctx.renderError}`;
+    const want = Object.keys(ctx.expected), got = Object.keys(ctx.published);
+    return bad([...want.filter((f) => !(f in ctx.published)).map((f) => `${f} missing`), ...got.filter((f) => !(f in ctx.expected)).map((f) => `${f} not rendered by anything`),
+      ...want.filter((f) => f in ctx.published && ctx.published[f] !== ctx.expected[f]).map((f) => `${f} differs from the render`)], 'published files are not the render of the inputs');
   } },
-  // every Bud colour reads on its theme's GitHub background
-  { id: 'header-contrast', run: ({ dir }) => [...HEADER_SOURCES.map(([, f, t]) => [f, t]), HEADER_FALLBACK].flatMap(([f, theme]) => {
-    if (!existsSync(join(dir, f))) return [];
-    const bg = rgbOf(THEMES[theme].bg);
-    return [...readFileSync(join(dir, f), 'utf8').matchAll(/\.c\d+\{fill:#([0-9a-f]{6})\}/g)].map((m) => m[1])
-      .filter((c) => contrast(rgbOf(c), bg) < 1.5).map((c) => `${f}: #${c} too close to #${THEMES[theme].bg}`);
-  }) },
-  // at 375 px (343 px of content) the mobile header's glyphs are at least 6 px
-  { id: 'header-mobile-glyphs', run: ({ dir }) => HEADER_SOURCES.filter(([m]) => /max-width/.test(m)).flatMap(([, f]) => {
-    if (!existsSync(join(dir, f))) return [];
-    const s = readFileSync(join(dir, f), 'utf8'), font = Number(/font-size:([\d.]+)px/.exec(s)?.[1]), w = Number(/viewBox="0 0 ([\d.]+) /.exec(s)?.[1]);
-    const px = font * Math.min(1, 343 / w);
-    return px >= 6 ? [] : [`${f}: glyphs ${px.toFixed(2)} px at 375 px wide`];
-  }) },
-  // the SkyBuds copy, from profile.json (D20): profile.json's one line right under the header art, linking getskybuds.com;
-  // any bullet is a sourced profile.json fact; the brand name only
-  { id: 'copy-line', run: ({ md, profile }) => {
-    const first = intro(md).find((l) => l.trim());
-    if (first !== profile.intro.line.text) return [`first line under the header art is not profile.json's line: ${first}`];
-    return /\]\(https:\/\/getskybuds\.com[/)]/.test(first) ? [] : ['the first line does not link getskybuds.com'];
+  // profile.json
+  { id: 'profile-shape', layer: 'profile', test: (ctx) => (ctx.profileOk ? null : 'profile.json keys or types are not the known shape') },
+  { id: 'profile-bud-asset', layer: 'profile', test: (ctx) => { const s = ctx.profile?.bud?.source; const f = s && join(ROOT, s.file); return f && existsSync(f) && createHash('sha256').update(readFileSync(f)).digest('hex') === s.sha256 ? null : 'the Bud image does not match its sha256 in profile.json'; } },
+  { id: 'profile-line-links-skybuds', layer: 'profile', test: (ctx) => (/\]\(https:\/\/getskybuds\.com[/)]/.test(ctx.profile?.intro?.line?.text) ? null : 'the intro line does not link getskybuds.com') },
+  { id: 'profile-line-plain', layer: 'profile', test: (ctx) => (plain(ctx.profile?.intro?.line?.text) ? null : 'the intro line is not one plain line (no heading, no HTML)') },
+  { id: 'profile-facts-sourced', layer: 'profile', test: (ctx) => bad((ctx.profile?.intro?.facts || []).filter((f) => !/^https:\/\//.test(f.source)).map((f) => f.text), 'facts without an https source') },
+  { id: 'profile-facts-plain', layer: 'profile', test: (ctx) => bad((ctx.profile?.intro?.facts || []).filter((f) => !plain(f.text)).map((f) => f.text), 'facts that are not one plain line') },
+  { id: 'profile-brand-only', layer: 'profile', test: (ctx) => (LEGAL.test(JSON.stringify([ctx.profile?.intro, ctx.profile?.header, ctx.profile?.bud?.name])) ? 'a legal entity name in the profile copy (brand name only)' : null) },
+  { id: 'profile-tagline-short', layer: 'profile', test: (ctx) => { const t = ctx.profile?.header?.tagline; return isStr(t) && t.length >= 1 && t.length <= 48 && plain(t) ? null : 'the header tagline is not one plain line of 1 to 48 characters'; } },
+  // data.json (absent before data.mjs has run; then the README has no cards)
+  { id: 'data-shape', layer: 'data', test: (ctx) => (!ctx.data || ctx.dataOk ? null : 'data.json keys or types are not the known shape') },
+  { id: 'data-canonical', layer: 'data', test: (ctx) => (!ctx.dataOk || ctx.dataRaw === dataJson(ctx.data) ? null : 'data.json is not as data.mjs writes it') },
+  { id: 'data-query', layer: 'data', test: (ctx) => (!ctx.dataOk || ctx.data.query === QUERY ? null : `data.json query is not ${QUERY}`) },
+  { id: 'pr-allowlisted', layer: 'data', test: (ctx) => bad(prsOf(ctx).filter((p) => !ctx.orgs.has(p.org.toLowerCase())).map((p) => p.url), 'PRs outside the org allowlist') },
+  { id: 'pr-org-of-repo', layer: 'data', test: (ctx) => bad(prsOf(ctx).filter((p) => p.repo.split('/')[0] !== p.org).map((p) => p.url), 'PRs whose org is not their repo owner') },
+  { id: 'pr-open-or-merged', layer: 'data', test: (ctx) => bad(prsOf(ctx).filter((p) => !(p.state === 'open' && p.merged === null) && !(p.state === 'merged' && isStr(p.merged))).map((p) => p.url), 'PRs neither open nor merged') },
+  { id: 'pr-url-of-repo', layer: 'data', test: (ctx) => bad(prsOf(ctx).filter((p) => p.url !== `https://github.com/${p.repo}/pull/${p.number}`).map((p) => p.url), 'PR urls that are not their repo and number') },
+  { id: 'pr-tile-name', layer: 'data', test: (ctx) => bad(prsOf(ctx).filter((p) => p.tile !== tileOf(p.repo, p.number)).map((p) => p.tile), 'tile names not made from repo and number') },
+  { id: 'prs-unique', layer: 'data', test: (ctx) => bad(prsOf(ctx).map((p) => p.url).filter((u, i, a) => a.indexOf(u) !== i), 'PRs listed twice') },
+  { id: 'prs-ordered', layer: 'data', test: (ctx) => { const p = prsOf(ctx); return p.every((x, i) => i === 0 || p[i - 1].created.localeCompare(x.created) < 0 || (p[i - 1].created === x.created && p[i - 1].url.localeCompare(x.url) < 0)) ? null : 'PRs are not in created order'; } },
+  { id: 'stats-derived', layer: 'data', test: (ctx) => (!ctx.dataOk || JSON.stringify(ctx.data.stats) === JSON.stringify(statsOf(ctx.data.prs)) ? null : 'data.json stats are not counted from its prs') },
+  // the generator's output (the render the published files must equal)
+  { id: 'svg-root', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.endsWith('.svg') && !(SVG_ROOT.test(b) && SVG_NS.test(b.slice(b.indexOf('<svg'))))).map(([f]) => f), 'SVGs without an <svg> root in the SVG namespace') },
+  { id: 'svg-wellformed', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.endsWith('.svg') && xmlProblem(b)).map(([f, b]) => `${f} (${xmlProblem(b)})`), 'SVGs that are not well-formed XML') },
+  { id: 'svg-size', layer: 'output', test: (ctx) => bad(Object.entries(ctx.expected || {}).filter(([f, b]) => f.endsWith('.svg') && Buffer.byteLength(b) > MAX_SVG).map(([f]) => f), 'SVGs over 150 KB') },
+  { id: 'readme-refs-resolve', layer: 'output', test: (ctx) => bad(imageRefs(README(ctx)).filter(local).map(clean).filter((r) => !(r in (ctx.expected || {}))), 'README images that are not rendered') },
+  { id: 'readme-alts', layer: 'output', test: (ctx) => bad([...README(ctx).matchAll(/<img\b[^>]*>/g)].map((m) => m[0]).filter((t) => !/\salt="[^"]+"/.test(t)).map((t) => t.slice(0, 60)), 'README images without alt text') },
+  { id: 'readme-html', layer: 'output', test: (ctx) => bad([...README(ctx).matchAll(/<(?:img|a|source|picture|p)\b[^\n]*?>/g)].map((m) => m[0]).filter((t) => !/^<(?:img|a|source|picture|p)(?:\s+[\w-]+="[^"<>]*")*\s*\/?>$/.test(t)).map((t) => t.slice(0, 60)), 'malformed README tags') },
+  { id: 'header-picture', layer: 'output', test: (ctx) => {
+    const pic = /^<p align="center"><picture>\n([\s\S]*?)\n<\/picture><\/p>\n/.exec(README(ctx));
+    const want = [...HEADER_SOURCES.map(([m, f]) => `<source media="${m}" srcset="${f}">`), `<img src="${HEADER_FALLBACK[0]}" alt="`];
+    const got = pic ? pic[1].split('\n') : [];
+    return got.length === want.length && want.every((w, i) => got[i].startsWith(w)) && / width="100%">$/.test(got.at(-1)) ? null : 'the README does not open with the themed <picture> header';
   } },
-  { id: 'copy-facts-sourced', run: ({ md, profile }) => { const ok = new Set(profile.intro.facts.filter((f) => /^https:\/\//.test(f.source)).map((f) => f.text)); return facts(md).filter((t) => !ok.has(t)).map((t) => `fact line not in profile.json with a source: ${t}`); } },
-  { id: 'copy-brand-only', run: ({ md }) => (/\b(Inc|LLC|Ltd|GmbH|ApS|Corp)\b\.?/.test(md) ? ['legal entity name in the README (brand name only)'] : []) },
-  // the README's own HTML: every tag has only quoted attributes with no raw < or " inside
-  { id: 'readme-html', run: ({ md }) => [...md.matchAll(/<(?:img|a|source|picture|p)\b[^\n]*?>/g)].map((m) => m[0])
-    .filter((t) => !/^<(?:img|a|source|picture|p)(?:\s+[\w-]+="[^"<>]*")*\s*\/?>$/.test(t)).map((t) => `malformed tag: ${t.slice(0, 80)}`) },
-  // the mission log: cards only with data.json, after the SkyBuds section
-  { id: 'mission-data', run: ({ md, data }) => (!data && /dist\/(?:mission\/|stats\.svg|trajectory\.svg)/.test(md) ? ['README shows PR cards but there is no data.json'] : []) },
-  { id: 'mission-order', run: ({ md, profile }) => { const m = md.indexOf(MISSIONS), l = md.indexOf(profile.intro.line.text); return m >= 0 && (l < 0 || m < l) ? ['the PR cards are not after the intro line'] : []; } },
-  // every PR is an open or merged PR in an allowlisted org, its tile named from its repo and number
-  { id: 'mission-allowlist', run: ({ data, orgs }) => (data?.prs || []).flatMap((p) => {
-    const problems = [];
-    if (!orgs.has(String(p.repo).split('/')[0].toLowerCase())) problems.push(`PR outside the org allowlist: ${p.url}`);
-    if (p.url !== `https://github.com/${p.repo}/pull/${p.number}`) problems.push(`PR url does not match its repo and number: ${p.url}`);
-    if (!['open', 'merged'].includes(p.state)) problems.push(`PR neither open nor merged: ${p.url}`);
-    if (p.tile !== tileOf(p.repo, p.number)) problems.push(`tile name ${p.tile} for ${p.url}`);
-    return problems;
-  }) },
-  { id: 'mission-stats', run: ({ data }) => (data && !sameJson(data.stats, statsOf(data.prs)) ? [`data.json stats ${JSON.stringify(data.stats)} != ${JSON.stringify(statsOf(data.prs))} from its prs`] : []) },
-  // the README shows exactly render.mjs's markup for each PR, and the stat chips' alt, nothing else
-  { id: 'mission-tiles', run: ({ md, data }) => {
-    if (!data) return [];
-    const problems = data.prs.filter((p) => !md.includes(tileLink(p))).map((p) => `README lacks the tile for ${p.url}`);
-    const shown = (md.match(/dist\/mission\//g) || []).length;
-    if (shown !== data.prs.length) problems.push(`README shows ${shown} tiles for ${data.prs.length} prs`);
-    if (!md.includes(`alt="${attr(statsAlt(statsOf(data.prs)))}"`)) problems.push('stat chips alt does not match the prs');
-    return problems;
-  } },
-  // the published SVGs are exactly what data.mjs draws from data.json, and dist/mission holds nothing else
-  { id: 'mission-svgs', run: ({ dir, data }) => {
-    if (!data) return [];
-    const want = { 'dist/stats.svg': statsSvg(statsOf(data.prs)), 'dist/trajectory.svg': trajectorySvg(data.prs), ...Object.fromEntries(data.prs.map((p) => [p.tile, tileSvg(p)])) };
-    const problems = Object.entries(want).filter(([f, body]) => !existsSync(join(dir, f)) || readFileSync(join(dir, f), 'utf8') !== body).map(([f]) => `${f} missing or not drawn from data.json`);
-    for (const f of svgFiles(dir, 'dist/mission')) if (!(f in want)) problems.push(`tile file for no PR: ${f}`);
-    return problems;
-  } },
+  { id: 'header-contrast', layer: 'output', test: (ctx) => bad(headers(ctx).flatMap(([f, theme]) => [...ctx.expected[f].matchAll(/\.c\d+\{fill:#([0-9a-f]{6})\}/g)].filter((m) => contrast(rgbOf(m[1]), rgbOf(THEMES[theme].bg)) < 1.5).map((m) => `${f} #${m[1]}`)), 'Bud colours too close to the page') },
+  { id: 'header-mobile-glyphs', layer: 'output', test: (ctx) => bad(HEADER_SOURCES.filter(([m, f]) => /max-width/.test(m) && ctx.expected?.[f]).map(([, f]) => f).filter((f) => { const s = ctx.expected[f]; return Number(/font-size:([\d.]+)px/.exec(s)?.[1]) * Math.min(1, 343 / Number(/viewBox="0 0 ([\d.]+) /.exec(s)?.[1])) < 6; }), 'mobile headers with glyphs under 6 px at 375 px') },
+  { id: 'header-blink', layer: 'output', test: (ctx) => bad(headers(ctx).map(([f]) => f).filter((f) => !/<g class="f3">[\s\S]*?<text/.test(ctx.expected[f])), 'headers without the blink frame') },
+  { id: 'header-tagline', layer: 'output', test: (ctx) => bad(headers(ctx).map(([f]) => f).filter((f) => /<text id="tagline"[^>]*>([^<]*)<\/text>/.exec(ctx.expected[f])?.[1] !== ctx.profile?.header?.tagline), "headers whose tagline is not profile.json's") },
+  { id: 'readme-line-first', layer: 'output', test: (ctx) => (introLines(README(ctx)).find((l) => l.trim()) === ctx.profile?.intro?.line?.text ? null : "the first line under the header art is not profile.json's line") },
+  { id: 'readme-one-heading', layer: 'output', test: (ctx) => bad(README(ctx).split('\n').filter((l) => /^\s*#/.test(l) && l !== MISSIONS), 'README headings other than the PR cards') },
+  { id: 'readme-tiles', layer: 'output', test: (ctx) => { const md = README(ctx), p = prsOf(ctx); return p.every((x) => md.includes(tileLink(x))) && (md.match(/dist\/mission\//g) || []).length === p.length ? null : 'README does not show exactly one linked tile per PR'; } },
+  { id: 'readme-cards-last', layer: 'output', test: (ctx) => { const md = README(ctx), m = md.indexOf(MISSIONS); return m < 0 || m > md.indexOf(ctx.profile?.intro?.line?.text) ? null : 'the PR cards are not after the intro line'; } },
+  { id: 'readme-stats-alt', layer: 'output', test: (ctx) => (!ctx.dataOk || README(ctx).includes(`alt="${attr(statsAlt(statsOf(ctx.data.prs)))}"`) ? null : 'the stat chips alt does not count the prs') },
 ];
 
-// The SkyBuds copy rules alone, for the live README test.
-export function copyProblems(md, profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'))) {
-  return RULES.filter((r) => r.id.startsWith('copy-')).flatMap((r) => r.run({ md, profile }));
-}
-
-export function check(dir) {
-  const readme = join(dir, 'README.md');
-  if (!existsSync(readme)) return ['README.md missing'];
-  const md = readFileSync(readme, 'utf8');
+const read = (f) => (existsSync(f) ? readFileSync(f, 'utf8') : null);
+// What the gate looks at: the published files, the inputs, and the render of the inputs.
+export function context(dir) {
+  const profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
+  const dataRaw = read(join(dir, 'data.json'));
+  let data = null; try { data = dataRaw === null ? null : JSON.parse(dataRaw); } catch { data = {}; }
   const ctx = {
-    dir, md,
-    refs: [...new Set(imageRefs(md).filter(local).map(clean))],
-    files: [...svgFiles(dir, 'dist'), ...svgFiles(dir, 'dist/mission')],
-    data: existsSync(join(dir, 'data.json')) ? JSON.parse(readFileSync(join(dir, 'data.json'), 'utf8')) : null,
-    profile: JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8')),
+    profile, profileOk: profileShape(profile), dataRaw, data, dataOk: data !== null && dataShape(data),
     orgs: new Set(JSON.parse(readFileSync(join(ROOT, 'pr-rules.json'), 'utf8')).orgs.map((o) => o.toLowerCase())),
+    published: Object.fromEntries(['README.md', ...walk(dir, 'dist')].filter((f) => existsSync(join(dir, f))).map((f) => [f, readFileSync(join(dir, f), 'utf8')])),
+    expected: null, renderError: null,
   };
-  return RULES.flatMap((r) => r.run(ctx).map((p) => `[${r.id}] ${p}`));
+  try { ctx.expected = { ...(ctx.dataOk ? dataFiles(data) : {}), ...renderFiles(profile, ctx.dataOk ? data : null) }; }
+  catch (e) { ctx.renderError = e.message; }
+  if (data !== null && !ctx.dataOk) ctx.expected = null, ctx.renderError ||= 'data.json is not the known shape';
+  return ctx;
+}
+export const runRules = (ctx, rules = RULES) => rules.flatMap((r) => { const p = r.test(ctx); return p ? [`[${r.id}] ${p}`] : []; });
+export function check(dir) {
+  if (!existsSync(join(dir, 'README.md'))) return ['README.md missing'];
+  return runRules(context(dir));
+}
+// The live README is the render of the live inputs.
+export function liveProblems(md, data, profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'))) {
+  return md === renderFiles(profile, data)['README.md'] ? [] : ["the live README is not the render of profile.json and the live data.json"];
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

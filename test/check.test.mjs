@@ -27,67 +27,59 @@ test('M1.T1: render is deterministic for the same profile.json', () => {
   for (const v of ['dark', 'light', 'mobile-dark', 'mobile-light']) assert.equal(readFileSync(join(a, 'dist', `header-${v}.svg`), 'utf8'), readFileSync(join(b, 'dist', `header-${v}.svg`), 'utf8'), v);
 });
 
+// D21: the gate refuses any published file that is not the render, with the file and the reason in one line
+const refused = (r, file, why) => { assert.equal(r.status, 1, r.stderr); assert.match(r.stderr, new RegExp(`\\[published-is-rendered\\] .*${file.replace(/[.]/g, '\\.')} ${why}`)); };
+
 test('M1.T1: check refuses a README pointing at a missing image', () => {
   const out = built();
   rmSync(join(out, 'dist', 'header-light.svg'));
-  const r = check(out);
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /header-light\.svg/);
+  refused(check(out), 'dist/header-light.svg', 'missing');
 });
 
-test('M1.T1: check refuses an SVG over 150 KB or one that is not well-formed XML', () => {
-  const big = built();
-  writeFileSync(join(big, 'dist', 'header-light.svg'), `<svg xmlns="http://www.w3.org/2000/svg"><!-- ${'x'.repeat(151 * 1024)} --></svg>`);
-  assert.equal(check(big).status, 1);
-  assert.match(check(big).stderr, /150 KB/);
-  const bad = built();
-  writeFileSync(join(bad, 'dist', 'header-light.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><text>unclosed</svg>');
-  assert.equal(check(bad).status, 1);
-  assert.match(check(bad).stderr, /XML/);
+test('M1.T1: check refuses an SVG over 150 KB or one that is not well-formed XML, and svgProblems names why', async () => {
+  const { svgProblems } = await import(join(ROOT, 'scripts', 'check.mjs'));
+  for (const [svg, why] of [[`<svg xmlns="http://www.w3.org/2000/svg"><!-- ${'x'.repeat(151 * 1024)} --></svg>`, /150 KB/], ['<svg xmlns="http://www.w3.org/2000/svg"><text>unclosed</svg>', /XML/]]) {
+    const out = built(); const f = join(out, 'dist', 'header-light.svg');
+    writeFileSync(f, svg);
+    refused(check(out), 'dist/header-light.svg', 'differs from the render');
+    assert.match(svgProblems(f, 'h').join('\n'), why);
+  }
 });
 
 const SVGNS = 'xmlns="http://www.w3.org/2000/svg"';
-function withHeader(svg) { const out = built(); writeFileSync(join(out, 'dist', 'header-light.svg'), svg); return check(out); }
 
-test('M1.T1a: check refuses an SVG with a bare &, an unknown entity, a repeated attribute or no SVG namespace', () => {
+test('M1.T1a: check refuses an SVG with a bare &, an unknown entity, a repeated attribute or no SVG namespace', async () => {
+  const { svgProblems } = await import(join(ROOT, 'scripts', 'check.mjs'));
   for (const [svg, why] of [
     [`<svg ${SVGNS}><text>a & b</text></svg>`, /&/],
     [`<svg ${SVGNS}><text>a&nbsp;b</text></svg>`, /entity/],
     [`<svg ${SVGNS} a="1" a="2"/>`, /attribute/],
     ['<svg><text>x</text></svg>', /namespace/],
   ]) {
-    const r = withHeader(svg);
-    assert.equal(r.status, 1, svg);
-    assert.match(r.stderr, why, svg);
+    const out = built(); const f = join(out, 'dist', 'header-light.svg');
+    writeFileSync(f, svg);
+    refused(check(out), 'dist/header-light.svg', 'differs from the render');
+    assert.match(svgProblems(f, 'h').join('\n'), why, svg);
   }
-  assert.equal(withHeader(`<svg ${SVGNS}><text>a &amp; b &#169; &#x2014;</text></svg>`).status, 0);
+  const ok = tmp('svg-'); writeFileSync(join(ok, 'a.svg'), `<svg ${SVGNS}><text>a &amp; b &#169; &#x2014;</text></svg>`);
+  assert.deepEqual(svgProblems(join(ok, 'a.svg'), 'a'), []);
 });
 
-test('M1.T1a: check follows every image form the README uses, and needs at least one local SVG', () => {
-  for (const md of ['![bud](dist/missing.svg)\n', "<img src='dist/gone.svg'>\n", '<picture><source srcset="dist/a.svg 1x, dist/b.svg 2x"><img src="dist/header-light.svg"></picture>\n']) {
+test('M1.T1a: a README with any other image, or none, is refused', () => {
+  for (const md of ['![bud](dist/missing.svg)\n', "<img src='dist/gone.svg'>\n", '<picture><source srcset="dist/a.svg 1x, dist/b.svg 2x"><img src="dist/header-light.svg"></picture>\n', '# hi\n']) {
     const out = built();
     writeFileSync(join(out, 'README.md'), md);
-    const r = check(out);
-    assert.equal(r.status, 1, md);
-    assert.match(r.stderr, /missing/, md);
+    refused(check(out), 'README.md', 'differs from the render');
   }
-  const none = built();
-  writeFileSync(join(none, 'README.md'), '# hi\n');
-  assert.equal(check(none).status, 1);
-  assert.match(check(none).stderr, /no local SVG/);
 });
 
-test('M1.T1a: every referenced image is checked as an SVG, wherever it lives', () => {
+test('M1.T1a: an image the render did not make is refused, wherever it lives', () => {
   const out = built();
-  writeFileSync(join(out, 'x.png'), '{"not":"an svg"}');
-  writeFileSync(join(out, 'README.md'), '<img src="dist/header-light.svg">\n<img src="x.png">\n');
-  const r = check(out);
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /x\.png: not an SVG/);
+  writeFileSync(join(out, 'dist', 'x.png'), '{"not":"an svg"}');
+  refused(check(out), 'dist/x.png', 'not rendered by anything');
   const big = built();
-  writeFileSync(join(big, 'other.svg'), `<svg ${SVGNS}><!-- ${'x'.repeat(151 * 1024)} --></svg>`);
-  writeFileSync(join(big, 'README.md'), '<img src="dist/header-light.svg">\n![o](other.svg)\n');
-  assert.match(check(big).stderr, /other\.svg: \d+ bytes, over 150 KB/);
+  writeFileSync(join(big, 'dist', 'other.svg'), `<svg ${SVGNS}><!-- ${'x'.repeat(151 * 1024)} --></svg>`);
+  refused(check(big), 'dist/other.svg', 'not rendered by anything');
 });
 
 test('M1.T1a: the README is rendered from profile.json, escaped', async () => {
@@ -102,57 +94,98 @@ test('M1.T1a: the README is rendered from profile.json, escaped', async () => {
   }
 });
 
-// M1.T7a (D18): check.mjs is the one publish gate. Each rule in RULES has one break here, and the break must be
-// refused by that rule's own id, so deleting, weakening or adding a rule without a break fails this test.
-test('M1.T7a: every publish rule refuses its own break of a good rendered profile', async () => {
+// M1.T7a (D18, D21): the gate. (1) Coverage: every published file is covered byte for byte, and a stray file is
+// refused, whatever files the render makes. (2) One break per rule: BREAKS keys equal the RULES ids, each break is
+// refused by its own id, and with that rule removed the gate no longer names it, so no rule can be deleted unseen.
+async function gateFixture() {
   const { createServer } = await import('node:http');
-  const { readdirSync, rmSync } = await import('node:fs');
   const { build } = await import(join(ROOT, 'scripts', 'data.mjs'));
-  const { check: gate, RULES } = await import(join(ROOT, 'scripts', 'check.mjs'));
   const item = (repo, n, merged) => ({ html_url: `https://github.com/${repo}/pull/${n}`, number: n, title: `fix ${n}`, state: merged ? 'closed' : 'open', created_at: `2026-10-19T2${n}:00:00Z`, repository_url: `https://api.github.com/repos/${repo}`, pull_request: { merged_at: merged ? '2026-10-20T03:00:00Z' : null } });
-  const good = async () => {
-    const out = tmp('gate-');
-    const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'application/json', connection: 'close' }); res.end(JSON.stringify({ total_count: 2, incomplete_results: false, items: [item('nasa/fprime', 1), item('teslamotors/kafka-helmsman', 2, true)] })); });
-    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
-    try { await build(out, { api: `http://127.0.0.1:${server.address().port}`, token: 'test-token', now: new Date('2026-10-21T00:00:00Z') }); }
-    finally { server.close(); }
-    assert.equal(render(out).status, 0);
-    return out;
-  };
-  const profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
-  const R = (o) => join(o, 'README.md'), md = (o) => readFileSync(R(o), 'utf8'), edit = (o, f) => writeFileSync(R(o), f(md(o)));
-  const file = (o, f, fn) => writeFileSync(join(o, f), fn(readFileSync(join(o, f), 'utf8')));
-  const data = (o, fn) => { const d = JSON.parse(readFileSync(join(o, 'data.json'), 'utf8')); fn(d); writeFileSync(join(o, 'data.json'), JSON.stringify(d)); };
-  const PIC = /<p align="center"><picture>[\s\S]*?<\/picture><\/p>\n/;
-  const BREAKS = {
-    'image-missing': (o) => edit(o, (m) => m + '\n<img src="dist/nope.svg">\n'),
-    'image-svg': (o) => writeFileSync(join(o, 'dist', 'extra.svg'), `<svg ${SVGNS}><g></svg>`),
-    'header-svg': (o) => edit(o, (m) => m.replace(/(src|srcset)="dist\/[^"]+"/g, '$1="https://example.com/a.png"')),
-    'header-picture': (o) => edit(o, (m) => m.replace(/<source media="\(prefers-color-scheme: dark\)"[^>]*>\n/, '')),
-    'header-contrast': (o) => file(o, 'dist/header-dark.svg', (s) => s.replace(/(\.c\d+\{fill:#)[0-9a-f]{6}/g, '$10e1118')),
-    'header-mobile-glyphs': (o) => file(o, 'dist/header-mobile-dark.svg', (s) => s.replace(/font-size:[\d.]+px/, 'font-size:3px')),
-    'copy-line': (o) => edit(o, (m) => m.replace(profile.intro.line.text, 'I make plush toys.')),
-    'copy-facts-sourced': (o) => edit(o, (m) => m.replace(`${profile.intro.line.text}\n`, `${profile.intro.line.text}\n\n- Best toy ever\n`)),
-    'copy-brand-only': (o) => edit(o, (m) => m + '\nFeldt Toys, Inc.\n'),
-    'readme-html': (o) => edit(o, (m) => m.replace('alt="nasa/fprime#1 open: fix 1"', 'alt="nasa/fprime#1 open: fix "1" <b>"')),
-    'mission-data': (o) => rmSync(join(o, 'data.json')),
-    'mission-order': (o) => edit(o, (m) => { const i = m.indexOf('## Open-source missions'); return m.slice(0, i).replace(profile.intro.line.text, m.slice(i) + '\n' + profile.intro.line.text); }),
-    'mission-allowlist': (o) => data(o, (d) => { Object.assign(d.prs[0], { repo: 'someone-else/x', org: 'someone-else', url: 'https://github.com/someone-else/x/pull/1' }); }),
-    'mission-stats': (o) => data(o, (d) => { d.stats.merged = 9; }),
-    'mission-tiles': (o) => edit(o, (m) => m.replace(/<a href="[^"]+pull\/2"><img [^>]+><\/a>\n/, '')),
-    'mission-svgs': (o) => file(o, 'dist/stats.svg', (s) => s.replace('>2</text>', '>99</text>')),
-  };
-  assert.deepEqual(Object.keys(BREAKS).sort(), RULES.map((r) => r.id).sort(), 'one break per publish rule');
-  const ok = await good();
-  assert.deepEqual(gate(ok), [], 'a good profile passes every rule');
-  assert.ok(readdirSync(join(ok, 'dist', 'mission')).length === 2);
-  const unrefused = [];
-  for (const [id, breakIt] of Object.entries(BREAKS)) {
-    const out = await good();
-    breakIt(out);
-    if (!gate(out).some((p) => p.startsWith(`[${id}] `))) unrefused.push(id);
+  const out = tmp('gate-');
+  const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'application/json', connection: 'close' }); res.end(JSON.stringify({ total_count: 2, incomplete_results: false, items: [item('nasa/fprime', 1), item('teslamotors/kafka-helmsman', 2, true)] })); });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  try { await build(out, { api: `http://127.0.0.1:${server.address().port}`, token: 'test-token', now: new Date('2026-10-21T00:00:00Z') }); }
+  finally { server.close(); }
+  assert.equal(render(out).status, 0);
+  return out;
+}
+
+test('M1.T7a: every published file is covered byte for byte, and nothing unrendered can be published', async () => {
+  const { cpSync, appendFileSync, rmSync, mkdirSync } = await import('node:fs');
+  const { check: gate, context } = await import(join(ROOT, 'scripts', 'check.mjs'));
+  const good = await gateFixture();
+  assert.deepEqual(gate(good), [], 'a good profile passes');
+  const files = Object.keys(context(good).published);
+  assert.ok(files.length >= 9 && files.includes('README.md') && files.some((f) => f.startsWith('dist/mission/')), files.join(' '));
+  const copy = () => { const o = tmp('gate-'); cpSync(good, o, { recursive: true }); return o; };
+  const missed = [];
+  for (const f of files) {
+    for (const [how, change] of [['one byte added', (o) => appendFileSync(join(o, f), ' ')], ['deleted', (o) => rmSync(join(o, f))]]) {
+      const o = copy(); change(o);
+      if (!gate(o).some((p) => p.startsWith('[published-is-rendered] ') || (f === 'README.md' && how === 'deleted'))) missed.push(`${f} ${how}`);
+    }
   }
-  assert.deepEqual(unrefused, [], 'breaks not refused by their own rule');
-  const r = check(ok);
-  assert.equal(r.status, 0, r.stderr);
+  for (const stray of ['dist/x.svg', 'dist/mission/x.svg', 'dist/a/b.txt']) {
+    const o = copy(); mkdirSync(dirname(join(o, stray)), { recursive: true }); writeFileSync(join(o, stray), readFileSync(join(good, 'dist', 'stats.svg')));
+    if (!gate(o).some((p) => p.startsWith('[published-is-rendered] '))) missed.push(`${stray} stray`);
+  }
+  assert.deepEqual(missed, [], 'changes the gate let through');
+});
+
+test('M1.T7a: every gate rule refuses its own break, and only that rule names it', async () => {
+  const { context, runRules, RULES } = await import(join(ROOT, 'scripts', 'check.mjs'));
+  const good = await gateFixture();
+  const base = context(good);
+  assert.deepEqual(runRules(base), [], 'a good profile passes every rule');
+  const clone = () => structuredClone(base);
+  const pr = (c) => c.data.prs[0];
+  const svg = (c, f, fn) => { c.expected[f] = fn(c.expected[f]); };
+  const md = (c, fn) => { c.expected['README.md'] = fn(c.expected['README.md']); };
+  // each break makes one input or the render wrong in one way; published files follow the render where needed
+  const BREAKS = {
+    'published-is-rendered': (c) => { c.published['README.md'] += ' '; },
+    'profile-shape': (c) => { c.profileOk = false; c.profile.intro.heading = 'About me'; },
+    'profile-bud-asset': (c) => { c.profile.bud.source.sha256 = '0'.repeat(64); },
+    'profile-line-links-skybuds': (c) => { c.profile.intro.line.text = 'I make AI plush companions for curious kids.'; },
+    'profile-line-plain': (c) => { c.profile.intro.line.text = '## [About](https://getskybuds.com) me'; },
+    'profile-facts-sourced': (c) => { c.profile.intro.facts = [{ text: 'Best toy ever', source: 'trust me' }]; },
+    'profile-facts-plain': (c) => { c.profile.intro.facts = [{ text: '<b>Best</b>', source: 'https://getskybuds.com/' }]; },
+    'profile-brand-only': (c) => { c.profile.header.tagline = 'Feldt Toys, Inc.'; },
+    'profile-tagline-short': (c) => { c.profile.header.tagline = 'x'.repeat(49); },
+    'data-shape': (c) => { c.dataOk = false; c.data.extra = 1; },
+    'data-canonical': (c) => { c.dataRaw += '\n'; },
+    'data-query': (c) => { c.data.query = 'is:pr author:Feldt'; },
+    'pr-allowlisted': (c) => { Object.assign(pr(c), { org: 'someone', repo: 'someone/x' }); },
+    'pr-org-of-repo': (c) => { pr(c).org = 'teslamotors'; },
+    'pr-open-or-merged': (c) => { pr(c).state = 'closed'; },
+    'pr-url-of-repo': (c) => { pr(c).url = pr(c).url.replace('/pull/1', '/pull/7'); },
+    'pr-tile-name': (c) => { pr(c).tile = 'dist/mission/x.svg'; },
+    'prs-unique': (c) => { c.data.prs.push({ ...pr(c), created: '2026-10-22T00:00:00Z' }); },
+    'prs-ordered': (c) => { c.data.prs.reverse(); },
+    'stats-derived': (c) => { c.data.stats.merged = 9; },
+    'svg-root': (c) => svg(c, 'dist/stats.svg', (s) => s.replace(' xmlns="http://www.w3.org/2000/svg"', '')),
+    'svg-wellformed': (c) => svg(c, 'dist/trajectory.svg', (s) => s.replace('</svg>', '<g></svg>')),
+    'svg-size': (c) => svg(c, 'dist/header-light.svg', (s) => s.replace('</svg>', `<!-- ${'x'.repeat(151 * 1024)} --></svg>`)),
+    'readme-refs-resolve': (c) => md(c, (m) => m.replace('dist/trajectory.svg', 'dist/gone.svg')),
+    'readme-alts': (c) => md(c, (m) => m.replace(/ alt="[^"]*" width="420"/, ' width="420"')),
+    'readme-html': (c) => md(c, (m) => m.replace('alt="nasa/fprime#1 open: fix 1"', 'alt="nasa/fprime#1 open: fix "1" <b>"')),
+    'header-picture': (c) => md(c, (m) => m.replace(' width="100%">', '>')),
+    'header-contrast': (c) => svg(c, 'dist/header-dark.svg', (s) => s.replace(/(\.c\d+\{fill:#)[0-9a-f]{6}/, '$10e1118')),
+    'header-mobile-glyphs': (c) => svg(c, 'dist/header-mobile-light.svg', (s) => s.replace(/font-size:[\d.]+px/, 'font-size:3px')),
+    'header-blink': (c) => svg(c, 'dist/header-mobile-dark.svg', (s) => s.replace('<g class="f3">', '<g class="f9">')),
+    'header-tagline': (c) => svg(c, 'dist/header-dark.svg', (s) => s.replace(/(<text id="tagline"[^>]*>)[^<]*/, '$1hello')),
+    'readme-line-first': (c) => md(c, (m) => m.replace('</picture></p>\n', '</picture></p>\n\nHi!\n')),
+    'readme-one-heading': (c) => md(c, (m) => m.replace('</picture></p>\n', '</picture></p>\n## About me\n')),
+    'readme-tiles': (c) => md(c, (m) => m.replace(/<a href="[^"]+pull\/2"><img [^>]+><\/a>\n/, '')),
+    'readme-cards-last': (c) => md(c, (m) => { const i = m.indexOf('## Open-source missions'), line = c.profile.intro.line.text; return m.slice(0, i).replace(line, m.slice(i) + line); }),
+    'readme-stats-alt': (c) => md(c, (m) => m.replace(/(<img src="dist\/stats\.svg" alt=")\d+/, '$199')),
+  };
+  assert.deepEqual(Object.keys(BREAKS).sort(), RULES.map((r) => r.id).sort(), 'one break per gate rule');
+  const wrong = [];
+  for (const [id, breakIt] of Object.entries(BREAKS)) {
+    const c = clone(); breakIt(c);
+    if (!runRules(c).some((p) => p.startsWith(`[${id}] `))) wrong.push(`${id}: not refused by its own rule`);
+    if (runRules(c, RULES.filter((r) => r.id !== id)).some((p) => p.startsWith(`[${id}] `))) wrong.push(`${id}: named by another rule`);
+  }
+  assert.deepEqual(wrong, []);
 });

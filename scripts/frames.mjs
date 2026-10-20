@@ -5,6 +5,7 @@
 // it costs no bytes. Every pose is sampled with one shared palette; a frame keeps only the rows that
 // differ from the base, and CSS shows each frame's rows (and hides the base rows they replace) on its
 // own steps of the loop.
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,8 +93,14 @@ export function deltaRows(base, grid) {
   return rows;
 }
 
+const loops = new Map(); // the same image bytes and grid always give the same loop
 export function buildLoop({ src = join(ROOT, JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8')).bud.source.file), cols = 96 } = {}) {
-  const img = decodePng(readFileSync(src));
+  const bytes = readFileSync(src), key = `${cols}:${createHash('sha256').update(bytes).digest('hex')}`;
+  if (!loops.has(key)) loops.set(key, makeLoop(bytes, cols));
+  return loops.get(key);
+}
+function makeLoop(bytes, cols) {
+  const img = decodePng(bytes);
   const poses = { base: img, flap1: flap(img, 10), flap2: flap(img, 20), blink: blink(img) };
   const sampled = Object.fromEntries(Object.entries(poses).map(([k, v]) => [k, sample(v, cols)]));
   const all = Object.values(sampled).flat();
