@@ -1,2 +1,104 @@
 #!/usr/bin/env node
-// M1.T5 placeholder until the build commit
+// data.mjs --out <dir>: Feldt's public PRs -> <dir>/data.json, dist/stats.svg, dist/trajectory.svg and
+// dist/mission/<org>-<repo>-<n>.svg (one tile per open or merged PR). Only PRs in pr-rules.json's orgs count;
+// closed-unmerged PRs don't show. Every fetch finishes before anything is written, so a failed or incomplete
+// search exits 1 and leaves the last good output alone.
+// Env: GITHUB_TOKEN (the Action's), GITHUB_API_URL (default https://api.github.com).
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+export const QUERY = 'is:pr is:public author:Feldt';
+const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
+const MONO = "Menlo,Consolas,'DejaVu Sans Mono',monospace";
+// one card look that reads on both GitHub themes
+const CARD = { bg: '#161b22', border: '#30363d', text: '#e6edf3', dim: '#8b949e', open: '#3fb950', merged: '#a371f7', accent: '#f0883e' };
+
+export async function fetchPrs({ api = process.env.GITHUB_API_URL || 'https://api.github.com', token = process.env.GITHUB_TOKEN } = {}) {
+  const items = [];
+  for (let page = 1; page <= 10; page++) {
+    const url = `${api}/search/issues?q=${encodeURIComponent(QUERY)}&sort=created&order=asc&per_page=100&page=${page}`;
+    const res = await fetch(url, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'Feldt-profile', ...(token ? { authorization: `Bearer ${token}` } : {}) } });
+    if (!res.ok) throw new Error(`search ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const body = await res.json();
+    if (body.incomplete_results !== false || !Array.isArray(body.items)) throw new Error('search returned incomplete results');
+    items.push(...body.items);
+    if (items.length >= body.total_count || body.items.length < 100) break;
+  }
+  return items;
+}
+
+export function shape(items, orgs) {
+  const allow = new Set(orgs.map((o) => o.toLowerCase()));
+  const prs = items
+    .map((it) => {
+      const repo = it.repository_url.replace(/^.*\/repos\//, '');
+      const state = it.pull_request?.merged_at ? 'merged' : it.state === 'open' ? 'open' : 'closed';
+      return { repo, org: repo.split('/')[0], number: it.number, title: it.title, url: it.html_url, state, created: it.created_at, merged: it.pull_request?.merged_at || null };
+    })
+    .filter((p) => allow.has(p.org.toLowerCase()) && p.state !== 'closed')
+    .sort((a, b) => a.created.localeCompare(b.created) || a.url.localeCompare(b.url))
+    .map((p) => ({ ...p, tile: `dist/mission/${p.repo.replace('/', '-').toLowerCase()}-${p.number}.svg` }));
+  const stats = {
+    prs: prs.length, merged: prs.filter((p) => p.state === 'merged').length, open: prs.filter((p) => p.state === 'open').length,
+    repos: new Set(prs.map((p) => p.repo.toLowerCase())).size, orgs: new Set(prs.map((p) => p.org.toLowerCase())).size,
+  };
+  return { prs, stats };
+}
+
+export function statsSvg(stats) {
+  const chips = [[stats.prs, 'PRs'], [stats.merged, 'merged'], [stats.repos, 'repos'], [stats.orgs, 'orgs']];
+  const w = 130, h = 64, W = chips.length * (w + 10) - 10;
+  const body = chips.map(([n, label], i) => {
+    const x = i * (w + 10);
+    return `<g transform="translate(${x} 0)"><rect width="${w}" height="${h}" rx="10" fill="${CARD.bg}" stroke="${CARD.border}"/>`
+      + `<text x="${w / 2}" y="32" text-anchor="middle" class="n">${n}</text><text x="${w / 2}" y="52" text-anchor="middle" class="l">${esc(label)}</text></g>`;
+  }).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${h}" width="${W}" height="${h}" role="img" aria-label="${stats.prs} PRs, ${stats.merged} merged, ${stats.repos} repos, ${stats.orgs} orgs">`
+    + `<style>.n{font:700 24px ${FONT};fill:${CARD.accent}}.l{font:12px ${FONT};fill:${CARD.dim}}</style>${body}</svg>\n`;
+}
+
+export function trajectorySvg(prs, now = new Date()) {
+  const W = 540, H = 120, pad = 28;
+  const t0 = prs.length ? Date.parse(prs[0].created) : now.getTime() - 86400000, t1 = Math.max(now.getTime(), t0 + 3600000);
+  const max = Math.max(prs.length, 1);
+  const x = (t) => +(pad + ((t - t0) / (t1 - t0)) * (W - 2 * pad)).toFixed(1), y = (n) => +(H - pad - (n / max) * (H - 2 * pad)).toFixed(1);
+  const pts = prs.map((p, i) => [x(Date.parse(p.created)), y(i + 1), p]);
+  const line = [[x(t0), y(0)], ...pts.flatMap(([px, py], i) => [[px, y(i)], [px, py]]), [x(t1), y(prs.length)]].map((p) => p.join(',')).join(' ');
+  const dots = pts.map(([px, py, p]) => `<circle cx="${px}" cy="${py}" r="4" fill="${p.state === 'merged' ? CARD.merged : CARD.open}"><title>${esc(`${p.repo}#${p.number}`)}</title></circle>`).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${prs.length} open-source PRs over time">`
+    + `<style>.t{font:12px ${FONT};fill:${CARD.dim}}</style><rect width="${W}" height="${H}" rx="10" fill="${CARD.bg}" stroke="${CARD.border}"/>`
+    + `<text x="${pad}" y="20" class="t">open-source PRs over time: ${prs.length}</text>`
+    + `<polyline points="${line}" fill="none" stroke="${CARD.accent}" stroke-width="2"/>${dots}</svg>\n`;
+}
+
+export function tileSvg(p) {
+  const W = 420, H = 92, title = p.title.length > 52 ? `${p.title.slice(0, 51)}…` : p.title;
+  const colour = p.state === 'merged' ? CARD.merged : CARD.open;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(`${p.repo}#${p.number} ${p.state}: ${p.title}`)}">`
+    + `<style>.r{font:600 14px ${FONT};fill:${CARD.text}}.n{font:13px ${MONO};fill:${CARD.dim}}.t{font:13px ${FONT};fill:${CARD.text}}.s{font:600 11px ${FONT};fill:#0d1117}</style>`
+    + `<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="10" fill="${CARD.bg}" stroke="${CARD.border}"/>`
+    + `<text x="16" y="28" class="r">${esc(p.repo)}</text><text x="${W - 16}" y="28" text-anchor="end" class="n">#${p.number}</text>`
+    + `<text x="16" y="54" class="t">${esc(title)}</text>`
+    + `<rect x="16" y="64" width="62" height="18" rx="9" fill="${colour}"/><text x="47" y="77" text-anchor="middle" class="s">${p.state}</text></svg>\n`;
+}
+
+export async function build(out, opts = {}) {
+  const orgs = JSON.parse(readFileSync(join(ROOT, 'pr-rules.json'), 'utf8')).orgs;
+  const { prs, stats } = shape(await fetchPrs(opts), orgs); // throws before anything is written
+  mkdirSync(join(out, 'dist', 'mission'), { recursive: true });
+  writeFileSync(join(out, 'dist', 'stats.svg'), statsSvg(stats));
+  writeFileSync(join(out, 'dist', 'trajectory.svg'), trajectorySvg(prs, opts.now));
+  for (const p of prs) writeFileSync(join(out, p.tile), tileSvg(p));
+  writeFileSync(join(out, 'data.json'), JSON.stringify({ query: QUERY, stats, prs }, null, 1) + '\n');
+  return { prs, stats };
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const args = process.argv.slice(2), out = args.includes('--out') ? args[args.indexOf('--out') + 1] : null;
+  if (!out) { console.error('usage: data.mjs --out <dir>'); process.exit(2); }
+  try { const { stats } = await build(resolve(out)); console.log(`data: ${JSON.stringify(stats)}`); }
+  catch (e) { console.error(`data: ${e.message}; nothing written`); process.exit(1); }
+}
