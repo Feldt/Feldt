@@ -1,5 +1,5 @@
 // M1.T6/T6a README: the header art, then profile.json's one line linking SkyBuds (D20), any fact line sourced in
-// profile.json, brand name only, and nothing else: no PR tiles (Fred 10-20, after D22).
+// profile.json, brand name only, then one small badge per PR (Fred 10-20: no PR tiles, "small badges for the open PRs").
 // README_RAW=<raw base url at one sha> also checks the live README equals the render of the live data.json.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -45,10 +45,11 @@ test('M1.T6a: the README leads with the banner, then profile.json\'s line, and p
   assert.equal(c.status, 0, c.stderr);
   assert.ok(md.startsWith('<p align="center"><picture>\n<source media="(max-width: 600px)" srcset="dist/banner-phone.svg">\n<img src="dist/banner-desktop.svg" alt="'), 'the banner first');
   assert.ok(md.includes(`</picture></p>\n\n${profile.intro.line.text}\n`), 'the line right under the art');
+  assert.ok(md.includes(`${profile.intro.line.text}\n\n${profile.intro.facts.map((f) => `- ${f.text}\n`).join('')}`), 'the facts as bullets under the line');
   assert.ok(!/^#/m.test(md), 'no heading');
 });
 
-test('Fred 10-20: with PRs in data.json the README still ends at the line: no PR tiles, no stat chips or chart', async () => {
+test('Fred 10-20: with PRs in data.json the README ends with one small badge per PR, newest first, each linking its PR; no tiles', async () => {
   const out = tmp('readme-');
   const { stats } = await withData(out, [
     pr('nasa/fprime', 6134, 'open', null, '2026-10-19T21:00:00Z', 'Fix <off-by-one> & "overflow"'),
@@ -58,20 +59,25 @@ test('Fred 10-20: with PRs in data.json the README still ends at the line: no PR
   assert.equal(render(out).status, 0);
   const md = readme(out);
   assert.ok(!/dist\/(mission\/|stats|trajectory)/.test(md), 'no tiles, stat chips or line chart');
-  assert.ok(!/<a href="https:\/\/github\.com\//.test(md), 'no PR links');
-  assert.equal(md.slice(md.indexOf(profile.intro.line.text) + profile.intro.line.text.length).trim(), '', 'nothing after the line');
+  const after = md.slice(md.indexOf(profile.intro.line.text) + profile.intro.line.text.length);
+  const row = after.slice(after.indexOf('\n<p>\n'));
+  assert.ok(after.indexOf('\n<p>\n') >= 0 && !row.slice(4).includes('\n\n'), 'one badge row after the line and its facts');
+  const links = [...row.matchAll(/<a href="([^"]+)"><picture><source media="\(prefers-color-scheme: dark\)" srcset="(dist\/badges\/[^"]+-dark\.svg)"><img src="(dist\/badges\/[^"]+-light\.svg)" alt="([^"]+)" height="28"><\/picture><\/a>/g)];
+  assert.deepEqual(links.map((m) => m[1]), ['https://github.com/teslamotors/vehicle-command/pull/9', 'https://github.com/nasa/fprime/pull/6134'], 'newest first');
+  assert.deepEqual(links.map((m) => m[4]), ['Merged PR teslamotors/vehicle-command#9: Keep key order', 'Open PR nasa/fprime#6134: Fix &lt;off-by-one&gt; &amp; &quot;overflow&quot;']);
+  for (const m of links) for (const f of [m[2], m[3]]) assert.ok(existsSync(join(out, f)), `${f} rendered`);
   assert.ok(!/^#/m.test(md), 'no heading');
   const r = check(out);
   assert.equal(r.status, 0, r.stderr);
 });
 
-test('M1.T6: with no PRs yet the README renders no tiles and no heading, and check passes', async () => {
+test('M1.T6: with no PRs yet the README renders no tiles, no badges and no heading, and check passes', async () => {
   const out = tmp('readme-');
   await withData(out, []);
   assert.equal(render(out).status, 0);
   const md = readme(out);
   assert.ok(!/^#/m.test(md));
-  assert.ok(!/dist\/(mission\/|stats|trajectory)/.test(md));
+  assert.ok(!/dist\/(mission\/|stats|trajectory|badges\/)/.test(md));
   assert.equal(check(out).status, 0, check(out).stderr);
 });
 

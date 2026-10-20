@@ -140,7 +140,7 @@ test('M1.T7a: every published file is covered byte for byte, and nothing unrende
   const good = await gateFixture();
   assert.deepEqual(gate(good), [], 'a good profile passes');
   const files = Object.keys(context(good).published);
-  assert.ok(files.length >= 5 && files.includes('README.md') && files.includes('dist/banner-desktop.svg') && files.includes('dist/banner-phone.svg') && files.some((f) => f.startsWith('dist/mission/')), files.join(' '));
+  assert.ok(files.length >= 5 && files.includes('README.md') && files.includes('dist/banner-desktop.svg') && files.includes('dist/banner-phone.svg') && files.some((f) => f.startsWith('dist/mission/')) && files.some((f) => f.startsWith('dist/badges/')), files.join(' '));
   const copy = () => { const o = tmp('gate-'); cpSync(good, o, { recursive: true }); return o; };
   const missed = [];
   for (const f of files) {
@@ -158,6 +158,7 @@ test('M1.T7a: every published file is covered byte for byte, and nothing unrende
 
 test('M1.T7a: every gate rule refuses its own break', async () => {
   const { context, runRules, RULES, profileShape } = await import(join(ROOT, 'scripts', 'check.mjs'));
+  const { badgeOf } = await import(join(ROOT, 'scripts', 'badges.mjs'));
   const good = await gateFixture();
   const base = context(good);
   assert.deepEqual(runRules(base), [], 'a good profile passes every rule');
@@ -203,6 +204,8 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     'readme-one-heading': (c) => md(c, (m) => m.replace('</picture></p>\n', '</picture></p>\n## About me\n')),
     'readme-no-tiles': (c) => md(c, (m) => `${m}<a href="${pr(c).url}"><img src="${pr(c).tile}" alt="a PR" width="408"></a>\n`),
     'tile-csp-safe': (c) => svg(c, pr(c).tile, (s) => s.replace('</svg>', '<image href="https://example.com/a.png"/></svg>')),
+    'readme-badges': (c) => md(c, (m) => m.split('\n').filter((l) => !l.startsWith(`<a href="${pr(c).url}"><picture>`)).join('\n')),
+    'badge-csp-safe': (c) => svg(c, badgeOf(pr(c).repo, pr(c).number).dark, (s) => s.replace('</svg>', '<image href="https://example.com/a.png"/></svg>')),
   };
   assert.deepEqual(Object.keys(BREAKS).sort(), RULES.map((r) => r.id).sort(), 'one break per gate rule');
   const wrong = [];
