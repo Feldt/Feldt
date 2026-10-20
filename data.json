@@ -1,11 +1,11 @@
 {
  "query": "is:pr is:public author:Feldt",
  "stats": {
-  "prs": 2,
+  "prs": 3,
   "merged": 0,
-  "open": 2,
-  "repos": 2,
-  "orgs": 2
+  "open": 3,
+  "repos": 3,
+  "orgs": 3
  },
  "prs": [
   {
@@ -29,6 +29,17 @@
    "created": "2026-10-20T02:13:17Z",
    "merged": null,
    "tile": "dist/mission/neuralink--tsui-38.svg"
+  },
+  {
+   "repo": "neuralinkcorp/datarepo",
+   "org": "neuralinkcorp",
+   "number": 84,
+   "title": "Match contains filters as a literal substring",
+   "url": "https://github.com/neuralinkcorp/datarepo/pull/84",
+   "state": "open",
+   "created": "2026-10-20T02:46:46Z",
+   "merged": null,
+   "tile": "dist/mission/neuralinkcorp--datarepo-84.svg"
   }
  ]
 }
