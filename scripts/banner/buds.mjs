@@ -2,16 +2,17 @@
 // parts that move on their own (Ash's wings, Pearl's tail, Sprout's leaf), plus an eyes-shut copy of the
 // eye cells for the blink. Behind the glyphs sits the Bud's silhouette (a dark backing with an outline), so
 // the face reads on any sky and the dark pupils stay dark.
-import { join } from 'node:path';
-import { loadImage, cropAlpha, subSample, toCells, glyphTable } from './ascii.mjs';
+import { decodePng } from './png.mjs';
+import { cropAlpha, subSample, toCells, glyphTable } from './ascii.mjs';
 import { SX, SY } from './masks.mjs';
 import { maskPath } from './contour.mjs';
 import { lch, candy } from './color.mjs';
 
-// Geometry in fractions of the alpha-cropped render.
+// Geometry only, in fractions of the alpha-cropped render. Which render each Bud is drawn from, and its sha256,
+// is profile.json's buds (render.mjs budInputs), so the gate pins every banner input.
 export const BUDS = {
   ash: {
-    file: 'pdp-ash-plush-900.png', lash: [92, 38, 20], outline: '3a1606',
+    lash: [92, 38, 20], outline: '3a1606',
     eyes: [{ cx: 0.362, cy: 0.287, rx: 0.068, ry: 0.06 }, { cx: 0.632, cy: 0.287, rx: 0.068, ry: 0.06 }],
     parts: [
       { id: 'wl', pivot: [0.30, 0.52], poly: [[0, 0.44], [0.285, 0.44], [0.30, 0.50], [0.30, 0.69], [0, 0.69]] },
@@ -19,14 +20,14 @@ export const BUDS = {
     ],
   },
   pearl: {
-    file: 'pdp-pearl-plush-730.png', lash: [24, 30, 80], outline: '0c1a4a',
+    lash: [24, 30, 80], outline: '0c1a4a',
     eyes: [{ cx: 0.219, cy: 0.372, rx: 0.072, ry: 0.058 }, { cx: 0.502, cy: 0.372, rx: 0.072, ry: 0.058 }],
     parts: [
       { id: 'tl', pivot: [0.63, 0.80], poly: [[0.585, 0.62], [1, 0.62], [1, 0.92], [0.70, 0.92], [0.66, 0.86], [0.60, 0.84]] },
     ],
   },
   sprout: {
-    file: 'pdp-sprout-plush-900.png', lash: [70, 40, 26], outline: '13300f',
+    lash: [70, 40, 26], outline: '13300f',
     eyes: [{ cx: 0.331, cy: 0.346, rx: 0.072, ry: 0.055 }, { cx: 0.655, cy: 0.346, rx: 0.072, ry: 0.055 }],
     parts: [
       { id: 'lf', pivot: [0.485, 0.098], poly: [[0.37, 0], [0.62, 0], [0.62, 0.098], [0.37, 0.098]] },
@@ -81,9 +82,9 @@ export function punchEyes(img, eyes, { dark = 0.5, light = 0.7 } = {}) {
 export const BUD_GLYPHS = glyphTable([...' .,:;\'"`^-_~=+*<>!|/\\()[]{}#%@&$8xoO0QWM']);
 export const BUD_RAMP = ' .:-=+*o#%&@';
 
-// One Bud sprite on a grid of `cols` columns. Cell (r, c) sits at (c*6, r*10) in sprite units.
-export function budSprite(name, srcDir, { cols, ascii = {} }) {
-  const spec = BUDS[name], img = punchEyes(cropAlpha(loadImage(join(srcDir, spec.file))), BUDS[name].eyes);
+// One Bud sprite on a grid of `cols` columns, from its render's PNG bytes. Cell (r, c) sits at (c*6, r*10) in sprite units.
+export function budSprite(name, png, { cols, ascii = {} }) {
+  const spec = BUDS[name], img = punchEyes(cropAlpha(decodePng(png)), BUDS[name].eyes);
   const cwPx = img.w / cols, chPx = cwPx / 0.6, rows = Math.ceil(img.h / chPx);
   const view = [0, 0, cols * cwPx, rows * chPx];
   const opts = { glyphs: BUD_GLYPHS, ramp: BUD_RAMP, lo: 0.1, hi: 0.85, gamma: 0.8, edge: 0.2, sharp: 1.2, radius: 4, floor: 0.15, ...ascii };

@@ -6,10 +6,10 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-import { createHash } from 'node:crypto';
-import { tileLink, renderFiles, BANNER_PICTURE, BANNER_PHONE, BANNER_DESKTOP } from './render.mjs';
+import { tileLink, renderFiles, budInputs, BANNER_PICTURE, BANNER_PHONE, BANNER_DESKTOP } from './render.mjs';
 import { unrle } from './tiles/lib/logo.mjs';
 import { QUERY, statsOf, tileOf, dataFiles, dataJson } from './data.mjs';
+import { BUDS } from './banner/buds.mjs';
 
 export const MAX_SVG = 150 * 1024, MAX_BANNER = 600 * 1024;
 const KB = (n) => `${n / 1024} KB`;
@@ -93,10 +93,13 @@ const LEGAL = /\b(Inc|LLC|Ltd|GmbH|ApS|Corp)\b/;
 const bad = (items, why) => (items.length ? `${why}: ${items.slice(0, 3).join(', ')}` : null);
 
 // profile.json, exact keys and types (unknown keys refused, so no field reaches render.mjs unchecked)
-function profileShape(p) {
-  const s = p?.bud?.source;
-  return keysOf(p || {}) === 'bud,intro' && keysOf(p.bud || {}) === 'animation,name,source' && isStr(p.bud.name) && isStr(p.bud.animation)
-    && keysOf(s || {}) === 'file,note,sha256,url' && [s.file, s.note, s.sha256, s.url].every(isStr)
+// buds: exactly the Buds the banner draws (buds.mjs BUDS), each pinned to a render under assets/buds/ by sha256,
+// with the public getskybuds.com image it came from
+const budShape = (b) => keysOf(b || {}) === 'file,sha256,url' && [b.file, b.sha256, b.url].every(isStr)
+  && b.file.startsWith('assets/buds/') && b.url.startsWith('https://getskybuds.com/');
+export function profileShape(p) {
+  return keysOf(p || {}) === 'buds,intro' && p.buds && typeof p.buds === 'object' && Object.keys(p.buds).join(',') === Object.keys(BUDS).join(',')
+    && Object.values(p.buds).every(budShape)
     && keysOf(p.intro || {}) === 'facts,line' && keysOf(p.intro.line || {}) === 'source,text' && isStr(p.intro.line.text) && isStr(p.intro.line.source)
     && Array.isArray(p.intro.facts) && p.intro.facts.every((f) => keysOf(f || {}) === 'source,text' && isStr(f.text) && isStr(f.source));
 }
@@ -133,12 +136,12 @@ export const RULES = [
   } },
   // profile.json
   { id: 'profile-shape', layer: 'profile', test: (ctx) => (ctx.profileOk ? null : 'profile.json keys or types are not the known shape') },
-  { id: 'profile-bud-asset', layer: 'profile', test: (ctx) => { const s = ctx.profile?.bud?.source; const f = s && join(ROOT, s.file); return f && existsSync(f) && createHash('sha256').update(readFileSync(f)).digest('hex') === s.sha256 ? null : 'the Bud image does not match its sha256 in profile.json'; } },
+  { id: 'profile-buds-pinned', layer: 'profile', test: (ctx) => { try { budInputs(ctx.profile); return null; } catch (e) { return e.message; } } },
   { id: 'profile-line-links-skybuds', layer: 'profile', test: (ctx) => (/\]\(https:\/\/getskybuds\.com[/)]/.test(ctx.profile?.intro?.line?.text) ? null : 'the intro line does not link getskybuds.com') },
   { id: 'profile-line-plain', layer: 'profile', test: (ctx) => (plain(ctx.profile?.intro?.line?.text) ? null : 'the intro line is not one plain line (no heading, no HTML)') },
   { id: 'profile-facts-sourced', layer: 'profile', test: (ctx) => bad((ctx.profile?.intro?.facts || []).filter((f) => !/^https:\/\//.test(f.source)).map((f) => f.text), 'facts without an https source') },
   { id: 'profile-facts-plain', layer: 'profile', test: (ctx) => bad((ctx.profile?.intro?.facts || []).filter((f) => !plain(f.text)).map((f) => f.text), 'facts that are not one plain line') },
-  { id: 'profile-brand-only', layer: 'profile', test: (ctx) => (LEGAL.test(JSON.stringify([ctx.profile?.intro, ctx.profile?.bud?.name])) ? 'a legal entity name in the profile copy (brand name only)' : null) },
+  { id: 'profile-brand-only', layer: 'profile', test: (ctx) => (LEGAL.test(JSON.stringify(ctx.profile?.intro)) ? 'a legal entity name in the profile copy (brand name only)' : null) },
   // data.json (absent before data.mjs has run; then the README has no cards)
   { id: 'data-shape', layer: 'data', test: (ctx) => (!ctx.data || ctx.dataOk ? null : 'data.json keys or types are not the known shape') },
   { id: 'data-canonical', layer: 'data', test: (ctx) => (!ctx.dataOk || ctx.dataRaw === dataJson(ctx.data) ? null : 'data.json is not as data.mjs writes it') },

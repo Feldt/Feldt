@@ -1,11 +1,7 @@
 // Image -> colour ASCII cells. Each cell is sampled on an SX x SY sub-grid; the glyph is the one whose ink
 // pattern (Menlo masks, measured once at dev time) best matches the cell's brightness pattern, so outlines
 // pick / \ ( ) _ | and flat fur picks dense glyphs. The colour is the average of the cell's inked pixels.
-import { readFileSync } from 'node:fs';
-import { decodePng } from './png.mjs';
 import { MASKS, SX, SY } from './masks.mjs';
-
-export function loadImage(path) { return decodePng(readFileSync(path)); }
 
 // Crop to the alpha bounding box.
 export function cropAlpha(img, thr = 24) {

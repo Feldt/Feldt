@@ -1,4 +1,4 @@
-// buildBanner('desktop' | 'phone', <dir with the Bud renders>) -> SVG string. Called by scripts/render.mjs.
+// buildBanner('desktop' | 'phone', { ash, pearl, sprout: PNG bytes of each Bud's render }) -> SVG string. Called by scripts/render.mjs.
 // The three Buds playing keepy-uppy in a candy meadow, in colour ASCII, as two self-contained animated
 // SVGs (desktop 1200x300, phone 640x320) that GitHub can show through <img>. No dependencies, no network,
 // deterministic: the same renders always give the same bytes.
@@ -81,7 +81,7 @@ const keyframes = (name, frames) => `@keyframes ${name}{${frames.map(([t, tf, ea
 const T = ({ y = 0, sx = 1, sy = 1 }) => [y ? `translate(0px,${f2(y)}px)` : '', sx !== 1 || sy !== 1 ? `scale(${f3(sx)},${f3(sy)})` : ''].filter(Boolean).join(' ') || 'none';
 const EASE = { io: 'cubic-bezier(.45,0,.55,1)', out: 'cubic-bezier(.2,.7,.4,1)', in: 'cubic-bezier(.6,0,.8,.3)', up: 'cubic-bezier(.33,.66,.66,1)', down: 'cubic-bezier(.33,0,.66,.33)', lin: 'linear' };
 
-export function buildBanner(kind, srcDir) {
+export function buildBanner(kind, buds) {
   const L = LAYOUTS[kind], R = rng(kind === 'desktop' ? 7 : 11);
   const { W, H } = L, cs = L.cell, cw = 6 * cs, lh = 10 * cs;
   const css = [], defs = [], layers = [];
@@ -243,7 +243,7 @@ export function buildBanner(kind, srcDir) {
   const budSvg = {}, contact = {};
   const SPEC = { sprout: { k: 30, shift: [85, 135, 16] }, ash: { k: 30 }, pearl: { k: 30 } };
   for (const name of ['sprout', 'ash', 'pearl']) {
-    const B = L.buds[name], sp = budSprite(name, srcDir, { cols: B.cols, ascii: { dither: 0.6 } });
+    const B = L.buds[name], sp = budSprite(name, buds[name], { cols: B.cols, ascii: { dither: 0.6 } });
     const bp = new Palette(name[0].toUpperCase());
     classify(Object.values(sp.cells), bp, SPEC[name].k, { chroma: 1.45, lift: 0.92, shift: SPEC[name].shift });
     for (const c of Object.values(sp.cells).flat()) if (c.fix) c.k = bp.cls(c.fix); // eye glyphs keep their own colour

@@ -1,7 +1,7 @@
 // M1.T4b banner: Ash, Pearl and Sprout bouncing a beach ball in a meadow, in animated colour ASCII. render.mjs
 // writes two self-contained SVGs (desktop 1200x300, phone 640x320) from the committed renders in assets/buds/,
 // deterministic, safe under GitHub's image CSP, animated with CSS keyframes, still under reduced motion.
-// M1.T2 (kept from the old header): the Bud art in profile.json is public SkyBuds art, recorded with its URL.
+// M1.T2: each Bud render in profile.json's buds is public SkyBuds art, recorded with its URL and sha256.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
@@ -9,13 +9,12 @@ import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmp, run } from './helpers.mjs';
-import { decodePng as decodeSpikePng } from '../scripts/spike.mjs';
+import { decodePng } from '../scripts/banner/png.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const profile = () => JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
 const KINDS = { desktop: [1200, 300], phone: [640, 320] };
 const ALT = 'Ash, Pearl and Sprout, the three SkyBuds, bouncing a beach ball under a rainbow in a flower meadow, in animated colour ASCII';
-const BUDS = ['pdp-ash-plush-900.png', 'pdp-pearl-plush-730.png', 'pdp-sprout-plush-900.png'];
 
 function render() {
   const out = tmp('banner-');
@@ -98,20 +97,21 @@ test('M1.T4b: the README opens with the centred banner <picture>: the phone sour
   assert.equal(r.status, 0, r.stderr);
 });
 
-test('M1.T4b: the banner inputs are the three public renders at 480 px on the long side, transparent around the Bud', async () => {
-  const { decodePng } = await import('../scripts/banner/png.mjs');
+test('M1.T4b: the banner inputs are the public renders in profile.json, at 480 px on the long side, transparent around the Bud', () => {
   const note = readFileSync(join(ROOT, 'assets', 'buds', 'SOURCE.md'), 'utf8');
-  for (const f of BUDS) {
-    const { w, h, px } = decodePng(readFileSync(join(ROOT, 'assets', 'buds', f)));
-    assert.equal(Math.max(w, h), 480, `${f}: ${w}x${h}`);
-    assert.equal(px[3], 0, `${f}: top-left corner is background`);
-    assert.ok(note.includes(`https://getskybuds.com/cdn/${f.replace('.png', '.webp')}`), `${f}: source URL in SOURCE.md`);
+  const buds = Object.entries(profile().buds);
+  assert.deepEqual(buds.map(([name]) => name), ['ash', 'pearl', 'sprout']);
+  for (const [name, { file, url }] of buds) {
+    const { w, h, px } = decodePng(readFileSync(join(ROOT, file)));
+    assert.equal(Math.max(w, h), 480, `${name}: ${w}x${h}`);
+    assert.equal(px[3], 0, `${name}: top-left corner is background`);
+    assert.ok(note.includes(url), `${name}: ${url} in SOURCE.md`);
+    assert.ok(note.includes(`\`${file.split('/').pop()}\``), `${name}: ${file} in SOURCE.md`);
   }
 });
 
 // the generator's own edge cases, which the committed renders never reach
-test('M1.T4b: the PNG decoder refuses a file that is not a PNG and any PNG but 8-bit RGBA, naming why', async () => {
-  const { decodePng } = await import('../scripts/banner/png.mjs');
+test('M1.T4b: the PNG decoder refuses a file that is not a PNG and any PNG but 8-bit RGBA, naming why', () => {
   assert.throws(() => decodePng(Buffer.from('GIF89a, not a PNG')), /not a PNG/);
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(1, 0); ihdr.writeUInt32BE(1, 4); ihdr[8] = 8; ihdr[9] = 2; // 8-bit RGB
   const len = Buffer.alloc(4); len.writeUInt32BE(13);
@@ -134,26 +134,26 @@ test('M1.T4b: quantising no more colours than palette slots keeps each colour as
   assert.equal(q.index([255.2, 0, 0]), 0);
 });
 
-test('M1.T2: profile.json names the Bud art by a public getskybuds.com URL that answers 200 logged out', async () => {
-  const { bud } = profile();
-  assert.match(bud.source.url, /^https:\/\/getskybuds\.com\//);
-  const r = await fetch(bud.source.url, { headers: { 'user-agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(20000) });
-  const body = Buffer.from(await r.arrayBuffer());
-  assert.equal(r.status, 200);
-  assert.match(r.headers.get('content-type'), /^image\//);
-  assert.ok(body.length > 10000, `${body.length} bytes`);
+test('M1.T2: profile.json names each Bud render by a public getskybuds.com URL that answers 200 logged out', async () => {
+  for (const [name, { url }] of Object.entries(profile().buds)) {
+    assert.match(url, /^https:\/\/getskybuds\.com\//, name);
+    const r = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(20000) });
+    const body = Buffer.from(await r.arrayBuffer());
+    assert.equal(r.status, 200, `${name}: ${url}`);
+    assert.match(r.headers.get('content-type'), /^image\//, name);
+    assert.ok(body.length > 10000, `${name}: ${body.length} bytes`);
+  }
 });
 
-test('M1.T2: the recorded Bud art is the file with its sha256, a transparent background and an opaque Bud', () => {
-  const { bud } = profile();
-  const buf = readFileSync(join(ROOT, bud.source.file));
-  assert.equal(createHash('sha256').update(buf).digest('hex'), bud.source.sha256);
-  const { w, h, px } = decodeSpikePng(buf);
-  assert.ok(w >= 384, `${w} px wide`);
-  let clear = 0, solid = 0;
-  // lossy WebP alpha sits at ~252 inside the Bud
-  for (let i = 3; i < px.length; i += 4) { if (px[i] === 0) clear++; else if (px[i] >= 240) solid++; }
-  assert.ok(clear / (w * h) > 0.15, 'background is transparent');
-  assert.ok(solid / (w * h) > 0.4, 'the Bud is opaque');
-  assert.equal(px[3], 0, 'top-left corner is background');
+test('M1.T2: each recorded Bud render is the file with its sha256, a transparent background and an opaque Bud', () => {
+  for (const [name, { file, sha256 }] of Object.entries(profile().buds)) {
+    const buf = readFileSync(join(ROOT, file));
+    assert.equal(createHash('sha256').update(buf).digest('hex'), sha256, name);
+    const { w, h, px } = decodePng(buf);
+    let clear = 0, solid = 0;
+    // lossy WebP alpha sits at ~252 inside the Bud
+    for (let i = 3; i < px.length; i += 4) { if (px[i] === 0) clear++; else if (px[i] >= 240) solid++; }
+    assert.ok(clear / (w * h) > 0.15, `${name}: background is transparent`);
+    assert.ok(solid / (w * h) > 0.4, `${name}: the Bud is opaque`);
+  }
 });

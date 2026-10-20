@@ -157,7 +157,7 @@ test('M1.T7a: every published file is covered byte for byte, and nothing unrende
 });
 
 test('M1.T7a: every gate rule refuses its own break', async () => {
-  const { context, runRules, RULES } = await import(join(ROOT, 'scripts', 'check.mjs'));
+  const { context, runRules, RULES, profileShape } = await import(join(ROOT, 'scripts', 'check.mjs'));
   const good = await gateFixture();
   const base = context(good);
   assert.deepEqual(runRules(base), [], 'a good profile passes every rule');
@@ -168,13 +168,13 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
   // each break makes one input or the render wrong in one way; published files follow the render where needed
   const BREAKS = {
     'published-is-rendered': (c) => { c.published['README.md'] += ' '; },
-    'profile-shape': (c) => { c.profileOk = false; c.profile.intro.heading = 'About me'; },
-    'profile-bud-asset': (c) => { c.profile.bud.source.sha256 = '0'.repeat(64); },
+    'profile-shape': (c) => { delete c.profile.buds.sprout; c.profileOk = profileShape(c.profile); },
+    'profile-buds-pinned': (c) => { c.profile.buds.pearl.sha256 = '0'.repeat(64); },
     'profile-line-links-skybuds': (c) => { c.profile.intro.line.text = 'I make AI plush companions for curious kids.'; },
     'profile-line-plain': (c) => { c.profile.intro.line.text = '## [About](https://getskybuds.com) me'; },
     'profile-facts-sourced': (c) => { c.profile.intro.facts = [{ text: 'Best toy ever', source: 'trust me' }]; },
     'profile-facts-plain': (c) => { c.profile.intro.facts = [{ text: '<b>Best</b>', source: 'https://getskybuds.com/' }]; },
-    'profile-brand-only': (c) => { c.profile.bud.name = 'Feldt Toys, Inc.'; },
+    'profile-brand-only': (c) => { c.profile.intro.line.text = 'I make [AI plush companions](https://getskybuds.com) at Feldt Toys, Inc.'; },
     'data-shape': (c) => { c.dataOk = false; c.data.logos = { nasa: { n: 2, bleed: true, pal: ['#ffffff'], px: 'a3' } }; },
     'data-canonical': (c) => { c.dataRaw += '\n'; },
     'data-query': (c) => { c.data.query = 'is:pr author:Feldt'; },
@@ -212,6 +212,39 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     if (!runRules(c).some((p) => p.startsWith(`[${id}] `))) wrong.push(`${id}: not refused by its own rule`);
   }
   assert.deepEqual(wrong, []);
+});
+
+test('M1.T4b: budInputs gives each Bud its pinned render, and refuses a missing file or a wrong sha256 by Bud name', async () => {
+  const { budInputs } = await import(join(ROOT, 'scripts', 'render.mjs'));
+  const good = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
+  const got = budInputs(good);
+  assert.deepEqual(Object.keys(got), ['ash', 'pearl', 'sprout']);
+  for (const [name, { file }] of Object.entries(good.buds)) assert.ok(got[name].equals(readFileSync(join(ROOT, file))), name);
+  const missing = structuredClone(good); missing.buds.sprout.file = 'assets/buds/gone.png';
+  assert.throws(() => budInputs(missing), { message: 'sprout: assets/buds/gone.png does not match its sha256 in profile.json' });
+  const wrong = structuredClone(good); wrong.buds.ash.file = good.buds.pearl.file;
+  assert.throws(() => budInputs(wrong), { message: 'ash: assets/buds/pdp-pearl-plush-730.png does not match its sha256 in profile.json' });
+});
+
+test('M1.T4b: profile-shape refuses buds that are not exactly the Buds the banner draws, or an entry not pinned to assets/buds/ and getskybuds.com', async () => {
+  const { profileShape } = await import(join(ROOT, 'scripts', 'check.mjs'));
+  const good = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
+  assert.equal(profileShape(good), true);
+  const cases = {
+    'a Bud missing': (p) => { delete p.buds.sprout; },
+    'an extra Bud': (p) => { p.buds.moss = { ...p.buds.ash }; },
+    'Buds out of order': (p) => { p.buds = { pearl: p.buds.pearl, ash: p.buds.ash, sprout: p.buds.sprout }; },
+    'an extra key': (p) => { p.buds.ash.note = 'x'; },
+    'a missing url': (p) => { delete p.buds.ash.url; },
+    'a sha256 that is not a string': (p) => { p.buds.ash.sha256 = 1; },
+    'a file outside assets/buds/': (p) => { p.buds.ash.file = 'assets/bud/ash-plush-480.png'; },
+    'a url off getskybuds.com': (p) => { p.buds.pearl.url = 'https://example.com/pdp-pearl-plush-730.webp'; },
+    'the old bud key': (p) => { p.bud = { name: 'Ash' }; },
+    'an unknown intro key': (p) => { p.intro.heading = 'About me'; },
+  };
+  const letThrough = [];
+  for (const [why, breakIt] of Object.entries(cases)) { const p = structuredClone(good); breakIt(p); if (profileShape(p)) letThrough.push(why); }
+  assert.deepEqual(letThrough, []);
 });
 
 test("M1.T4b: banner-csp-safe refuses each construct GitHub's image CSP blocks, and allows in-file url(#id) and href=\"#id\"", async () => {
