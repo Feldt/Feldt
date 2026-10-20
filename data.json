@@ -1,11 +1,11 @@
 {
  "query": "is:pr is:public author:Feldt",
  "stats": {
-  "prs": 4,
+  "prs": 5,
   "merged": 0,
-  "open": 4,
-  "repos": 4,
-  "orgs": 4
+  "open": 5,
+  "repos": 5,
+  "orgs": 5
  },
  "prs": [
   {
@@ -51,6 +51,17 @@
    "created": "2026-10-20T04:16:20Z",
    "merged": null,
    "tile": "dist/mission/nasa-ammos--3dtilesrendererjs-1773.svg"
+  },
+  {
+   "repo": "uber/h3",
+   "org": "uber",
+   "number": 1275,
+   "title": "Fix cellsToMultiPolygon CLI emitting unclosed rings in WKT output",
+   "url": "https://github.com/uber/h3/pull/1275",
+   "state": "open",
+   "created": "2026-10-20T05:31:34Z",
+   "merged": null,
+   "tile": "dist/mission/uber--h3-1275.svg"
   }
  ],
  "logos": {
@@ -116,6 +127,18 @@
     "#e34b45"
    ],
    "px": "a112ga124ga124ga111if3qj2f3i2aga44fjkmecnb10c2ehlfia35gfmecb24cehfa28ikeb13c2o3c3b13eja23leb9phlfga7ga4ijkmob9mfa18lb7pkfigfjkhepla8me2hljiaijhcb6ca17fb4pkfafkecb7iaga4jb7chlfajhcb3ca18ebefgfhcb11ea5fnb11ekigdcbda20ieb16ea3fb16cda22jb19ha2cb18ca22hb8ce4b6leb5cececnb8da23eb5hfga4eb12ka4idcb5da24ghb3ka3ga3mb12fa7cb2cda28hba8lb12a9cda33ga6fb11ca52b11ca41ga10cb10da52eb10ja38ga13kb10a53fb9ca36ga17b9ca34ga19cb8da33ga20cb8da54db8a31ga24b8a29ga26b7ca56b7ca56cb6da56cb6da56db6a57db5na58b5ca58cb4da58cb4da58db4da58db3na60b3ca60cb2da60cb2da60db2da60db2a62b2a62bca62bca62cda62cda62da672"
+  },
+  "uber": {
+   "n": 64,
+   "bleed": true,
+   "pal": [
+    "#000000",
+    "#ffffff",
+    "#555555",
+    "#aaaaaa",
+    "#a5a5a5"
+   ],
+   "px": "a1544dbda7cb2a2b2a47dbda7cb2a2b2a47dbda7cb2a2b2a47dbda7cb2a2b2a47dbda7cb2a2b2acdb3dca6cdb3eca3cd2aed2a16dbda7cb2a2b2db7ca4cb7da2cb5da16dbda7cb2a2b4dc3db2ca2cb2dc3db2cacb3dc2a16dbda7cb2a2b3ca5db2a2b2da5db2acb2da19dbda7cb2a2b2ca6cb2c2b2a6cb2c2b2a20dbda7cb2a2b2a8b2d2b11c2b2a20db2a7cb2a2b2a8b2d2b11c2b2a20db2a7db2a2b2ca7b2c2b2a10cb2a20cb2da5cb3a2b2da6db2a2b2da6ca2cb2a21db2da3cb4a2b4ca3db2da2db2da3cb2cacb2a21cb4db6a2b5d2b3da4db3d2b3cacb2a23db5c2b2a2b2cdb5ca6cb5dca2cb2a25c2a13c3a11c2a1492"
   }
  }
 }
