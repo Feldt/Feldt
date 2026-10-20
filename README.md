@@ -5,14 +5,7 @@
 <img src="dist/header-light.svg" alt="Ash, a SkyBuds plush, in animated colour ASCII" width="100%">
 </picture></p>
 
-## SkyBuds: talk time, not screen time
-
-I build [SkyBuds](https://getskybuds.com): screen-free AI companion plush toys for kids ages 3 to 10.
-
-- Just say “Hey SkyBud” and start talking: jokes, big questions and more than 75 languages.
-- It answers, then asks one back, and adapts its language and topics to the child’s age.
-- Bedtime stories made just for them, and a brushing song of its own.
-- No camera, no screen, no ads. kidSAFE Listed, and we don’t sell kids’ data.
+I make [AI plush companions](https://getskybuds.com) for curious kids.
 
 ## Open-source missions
 
