@@ -33,7 +33,10 @@ export async function fetchPrs({ api = process.env.GITHUB_API_URL || 'https://ap
 
 export function shape(items, orgs) {
   const allow = new Set(orgs.map((o) => o.toLowerCase()));
+  // search can repeat an item across pages, and only items with pull_request are PRs: one entry per PR url
+  const seen = new Set();
   const prs = items
+    .filter((it) => it.pull_request && !seen.has(it.html_url) && seen.add(it.html_url))
     .map((it) => {
       const repo = it.repository_url.replace(/^.*\/repos\//, '');
       const state = it.pull_request?.merged_at ? 'merged' : it.state === 'open' ? 'open' : 'closed';
