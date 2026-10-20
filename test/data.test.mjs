@@ -166,3 +166,10 @@ test('M1.T5a: a PR repeated across search pages and an issue in the results stil
   assert.equal(d.stats.prs, 1);
   assert.deepEqual(tiles(out), ['nasa--fprime-5.svg']);
 });
+
+test('M1.T7: the same PRs draw the same trajectory an hour later, so the hourly Action commits only on change', async () => {
+  const { trajectorySvg } = await import('../scripts/data.mjs');
+  const prs = [{ repo: 'nasa/fprime', number: 5, state: 'open', created: '2026-10-19T21:00:00Z' }, { repo: 'NVIDIA/cutlass', number: 7, state: 'merged', created: '2026-10-19T21:05:00Z' }];
+  assert.equal(trajectorySvg(prs, new Date('2026-10-20T01:17:00Z')), trajectorySvg(prs, new Date('2026-10-20T02:17:00Z')));
+  assert.equal(trajectorySvg([], new Date('2026-10-20T01:17:00Z')), trajectorySvg([], new Date('2026-10-21T01:17:00Z')));
+});
