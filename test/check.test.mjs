@@ -105,7 +105,7 @@ async function gateFixture() {
   const out = tmp('gate-');
   const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'application/json', connection: 'close' }); res.end(JSON.stringify({ total_count: 2, incomplete_results: false, items: [item('nasa/fprime', 1), item('teslamotors/kafka-helmsman', 2, true)] })); });
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
-  try { await build(out, { api: `http://127.0.0.1:${server.address().port}`, token: 'test-token', now: new Date('2026-10-21T00:00:00Z') }); }
+  try { await build(out, { api: `http://127.0.0.1:${server.address().port}`, avatars: `http://127.0.0.1:${server.address().port}`, token: 'test-token', now: new Date('2026-10-21T00:00:00Z') }); }
   finally { server.close(); }
   assert.equal(render(out).status, 0);
   return out;
@@ -153,7 +153,7 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     'profile-facts-plain': (c) => { c.profile.intro.facts = [{ text: '<b>Best</b>', source: 'https://getskybuds.com/' }]; },
     'profile-brand-only': (c) => { c.profile.header.tagline = 'Feldt Toys, Inc.'; },
     'profile-tagline-short': (c) => { c.profile.header.tagline = 'x'.repeat(49); },
-    'data-shape': (c) => { c.dataOk = false; c.data.extra = 1; },
+    'data-shape': (c) => { c.dataOk = false; c.data.logos = { nasa: { n: 2, bleed: true, pal: ['#ffffff'], px: 'a3' } }; },
     'data-canonical': (c) => { c.dataRaw += '\n'; },
     'data-query': (c) => { c.data.query = 'is:pr author:Feldt'; },
     'pr-allowlisted': (c) => { Object.assign(pr(c), { org: 'someone', repo: 'someone/x' }); },
@@ -168,7 +168,7 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     'svg-wellformed': (c) => svg(c, pr(c).tile, (s) => s.replace('</svg>', '<g></svg>')),
     'svg-size': (c) => svg(c, 'dist/header-light.svg', (s) => s.replace('</svg>', `<!-- ${'x'.repeat(151 * 1024)} --></svg>`)),
     'readme-refs-resolve': (c) => md(c, (m) => m.replace(pr(c).tile, 'dist/gone.svg')),
-    'readme-alts': (c) => md(c, (m) => m.replace(/ alt="[^"]*" width="420"/, ' width="420"')),
+    'readme-alts': (c) => md(c, (m) => m.replace(/ alt="[^"]*" width="408"/, ' width="408"')),
     'readme-html': (c) => md(c, (m) => m.replace('alt="nasa/fprime#1 open: fix 1"', 'alt="nasa/fprime#1 open: fix "1" <b>"')),
     'header-picture': (c) => md(c, (m) => m.replace(' width="100%">', '>')),
     'header-contrast': (c) => svg(c, 'dist/header-dark.svg', (s) => s.replace(/(\.c\d+\{fill:#)[0-9a-f]{6}/, '$10e1118')),
@@ -178,7 +178,8 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     'readme-line-first': (c) => md(c, (m) => m.replace('</picture></p>\n', '</picture></p>\n\nHi!\n')),
     'readme-one-heading': (c) => md(c, (m) => m.replace('</picture></p>\n', '</picture></p>\n## About me\n')),
     'readme-tiles': (c) => md(c, (m) => m.replace(/<a href="[^"]+pull\/2"><img [^>]+><\/a>\n/, '')),
-    'readme-cards-last': (c) => md(c, (m) => { const i = m.indexOf('## Open-source missions'), line = c.profile.intro.line.text; return m.slice(0, i).replace(line, m.slice(i) + line); }),
+    'readme-cards-last': (c) => md(c, (m) => { const line = c.profile.intro.line.text; return m.replace(`${line}\n`, '') + `${line}\n`; }),
+    'tile-csp-safe': (c) => svg(c, pr(c).tile, (s) => s.replace('</svg>', '<image href="https://example.com/a.png"/></svg>')),
   };
   assert.deepEqual(Object.keys(BREAKS).sort(), RULES.map((r) => r.id).sort(), 'one break per gate rule');
   const wrong = [];

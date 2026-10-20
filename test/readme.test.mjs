@@ -24,7 +24,7 @@ const pr = (repo, n, state, merged, created, title) => ({
 async function withData(out, items) {
   const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ total_count: items.length, incomplete_results: false, items })); });
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
-  try { return await build(out, { api: `http://127.0.0.1:${server.address().port}`, token: 'test-token', now: new Date('2026-10-21T00:00:00Z') }); }
+  try { return await build(out, { api: `http://127.0.0.1:${server.address().port}`, avatars: `http://127.0.0.1:${server.address().port}`, token: 'test-token', now: new Date('2026-10-21T00:00:00Z') }); }
   finally { server.close(); }
 }
 
@@ -45,10 +45,10 @@ test('M1.T6a: the README leads with the header art, then profile.json\'s line, a
   assert.equal(c.status, 0, c.stderr);
   assert.ok(md.startsWith('<p align="center"><picture>'), 'header art first');
   assert.ok(md.includes(`</picture></p>\n\n${profile.intro.line.text}\n`), 'the line right under the art');
-  assert.ok(!/^#{1,3} (?!Open-source missions)/m.test(md), 'no other heading');
+  assert.ok(!/^#/m.test(md), 'no heading');
 });
 
-test('M1.T6b: with data.json the README shows only the heading and one linked tile per PR (D22)', async () => {
+test('M1.T6b: with data.json the README shows one linked tile per PR after the line, and nothing else (D22)', async () => {
   const out = tmp('readme-');
   const { prs, stats } = await withData(out, [
     pr('nasa/fprime', 6134, 'open', null, '2026-10-19T21:00:00Z', 'Fix <off-by-one> & "overflow"'),
@@ -62,19 +62,20 @@ test('M1.T6b: with data.json the README shows only the heading and one linked ti
   assert.equal(tiles.length, stats.prs);
   assert.deepEqual(tiles.map((m) => [m[1], m[2]]), prs.map((p) => [p.url, p.tile]));
   assert.ok(!/alt="[^"]*<|alt="[^"]*"overflow/.test(md), 'titles escaped in alt text');
-  const section = md.slice(md.indexOf('## Open-source missions'));
-  assert.equal(section.replace(/<a href="[^"]+"><img [^>]+><\/a>\n/g, '').trim(), '## Open-source missions', 'nothing but tiles under the heading');
-  assert.ok(md.indexOf('## Open-source missions') > md.indexOf(profile.intro.line.text), 'tiles come after the intro line');
+  const section = md.slice(md.indexOf(profile.intro.line.text) + profile.intro.line.text.length);
+  assert.equal(section.replace(/<a href="[^"]+"><img [^>]+><\/a>\n/g, '').trim(), '', 'nothing but tiles after the line');
+  assert.ok(md.indexOf('<a href="https://github.com/') > md.indexOf(profile.intro.line.text), 'tiles come after the intro line');
+  assert.ok(!/^#/m.test(md), 'no heading');
   const r = check(out);
   assert.equal(r.status, 0, r.stderr);
 });
 
-test('M1.T6: with no PRs yet the README still renders the heading and no tiles, and check passes', async () => {
+test('M1.T6: with no PRs yet the README renders no tiles and no heading, and check passes', async () => {
   const out = tmp('readme-');
   await withData(out, []);
   assert.equal(render(out).status, 0);
   const md = readme(out);
-  assert.ok(md.includes('## Open-source missions'));
+  assert.ok(!/^#/m.test(md));
   assert.ok(!/dist\/(mission\/|stats|trajectory)/.test(md));
   assert.equal(check(out).status, 0, check(out).stderr);
 });

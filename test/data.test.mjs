@@ -37,7 +37,7 @@ function fakeApi(handler) {
 }
 function data(out, api) {
   return new Promise((ok) => {
-    const p = spawn('node', [join(ROOT, 'scripts', 'data.mjs'), '--out', out], { env: { ...process.env, GITHUB_API_URL: api, GITHUB_TOKEN: 'test-token' } });
+    const p = spawn('node', [join(ROOT, 'scripts', 'data.mjs'), '--out', out], { env: { ...process.env, GITHUB_API_URL: api, GITHUB_AVATARS_URL: api, GITHUB_TOKEN: 'test-token' } });
     let stderr = '';
     p.stderr.on('data', (d) => { stderr += d; });
     p.on('close', (status) => ok({ status, stderr }));
