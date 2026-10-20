@@ -153,3 +153,16 @@ test('M1.T5 r2: every page is fetched, and a failure on any page or a malformed 
     assert.deepEqual(snapshot(out), good, 'last good output unchanged');
   }
 });
+
+test('M1.T5a: a PR repeated across search pages and an issue in the results still give one tile per PR', async () => {
+  const out = tmp('data-');
+  const a = pr('nasa/fprime', 5, 'open', null, '2026-10-19T21:00:00Z', 'a');
+  const issue = { ...pr('nasa/fprime', 7, 'open', null, '2026-10-19T22:00:00Z', 'an issue, not a PR') };
+  delete issue.pull_request;
+  issue.html_url = 'https://github.com/nasa/fprime/issues/7';
+  assert.equal((await dataWith(out, paged([a, { ...a }, issue]))).status, 0);
+  const d = JSON.parse(readFileSync(join(out, 'data.json'), 'utf8'));
+  assert.deepEqual(d.prs.map((p) => `${p.repo}#${p.number}`), ['nasa/fprime#5']);
+  assert.equal(d.stats.prs, 1);
+  assert.deepEqual(tiles(out), ['nasa--fprime-5.svg']);
+});
