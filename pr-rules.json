@@ -1,0 +1,6 @@
+{
+  "note": "Orgs whose public PRs by Feldt count and show on the profile. M1.T8 adds per-repo rules (base branch, title, body, AI disclosure, approval, DCO).",
+  "orgs": ["nasa", "NASA-AMMOS", "nasa-jpl", "teslamotors", "neuralink", "neuralinkcorp",
+    "facebook", "facebookresearch", "meta-llama", "NVIDIA", "google", "google-deepmind", "microsoft", "github",
+    "aws", "awslabs", "huggingface", "cloudflare", "vercel", "Netflix", "uber", "stripe", "mlflow"]
+}
