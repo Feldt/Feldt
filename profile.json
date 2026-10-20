@@ -13,28 +13,10 @@
     "tagline": "I build SkyBuds: plush friends kids talk with"
   },
   "intro": {
-    "heading": "SkyBuds: talk time, not screen time",
     "line": {
-      "text": "I build [SkyBuds](https://getskybuds.com): screen-free AI companion plush toys for kids ages 3 to 10.",
+      "text": "I make [AI plush companions](https://getskybuds.com) for curious kids.",
       "source": "https://getskybuds.com/"
     },
-    "facts": [
-      {
-        "text": "Just say “Hey SkyBud” and start talking: jokes, big questions and more than 75 languages.",
-        "source": "https://getskybuds.com/"
-      },
-      {
-        "text": "It answers, then asks one back, and adapts its language and topics to the child’s age.",
-        "source": "https://getskybuds.com/"
-      },
-      {
-        "text": "Bedtime stories made just for them, and a brushing song of its own.",
-        "source": "https://getskybuds.com/"
-      },
-      {
-        "text": "No camera, no screen, no ads. kidSAFE Listed, and we don’t sell kids’ data.",
-        "source": "https://getskybuds.com/"
-      }
-    ]
+    "facts": []
   }
 }

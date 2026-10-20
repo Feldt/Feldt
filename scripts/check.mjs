@@ -87,12 +87,13 @@ const clean = (ref) => ref.replace(/^\.?\//, '').split(/[?#]/)[0];
 const svgFiles = (dir, rel) => { const d = join(dir, rel); return existsSync(d) ? readdirSync(d).filter((n) => n.endsWith('.svg')).map((n) => `${rel}/${n}`) : []; };
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+// the intro: the lines between the header art and the PR cards
 function intro(md) {
-  const lines = md.split('\n'), h = lines.findIndex((l) => /^#{1,3} /.test(l));
-  const end = lines.findIndex((l, i) => i > h && /^#{1,3} /.test(l));
-  return { lines, h, section: h < 0 ? [] : lines.slice(h + 1, end < 0 ? undefined : end) };
+  const lines = md.split('\n'), start = lines.findIndex((l) => /<\/picture>/.test(l)) + 1;
+  const end = lines.findIndex((l, i) => i >= start && l === MISSIONS);
+  return lines.slice(start, end < 0 ? undefined : end);
 }
-const facts = (md) => intro(md).section.filter((x) => /^- /.test(x)).map((x) => x.slice(2));
+const facts = (md) => intro(md).filter((x) => /^- /.test(x)).map((x) => x.slice(2));
 
 export const RULES = [
   // images: every local image the README shows exists and is a publishable SVG; so is every SVG we ship
@@ -122,19 +123,21 @@ export const RULES = [
     const px = font * Math.min(1, 343 / w);
     return px >= 6 ? [] : [`${f}: glyphs ${px.toFixed(2)} px at 375 px wide`];
   }) },
-  // the SkyBuds copy, from profile.json
-  { id: 'copy-heading', run: ({ md }) => { const { lines, h } = intro(md); return h < 0 ? ['no heading'] : /SkyBuds/.test(lines[h]) ? [] : [`first heading is not about SkyBuds: ${lines[h]}`]; } },
-  { id: 'copy-first-line', run: ({ md }) => { const { lines, h } = intro(md); const first = lines.slice(h + 1).find((l) => l.trim()); return first && /SkyBuds/.test(first) ? [] : [`first line is not about SkyBuds: ${first}`]; } },
-  { id: 'copy-art-first', run: ({ md }) => { const { lines, h } = intro(md); const p = md.indexOf('<picture>'); return p >= 0 && h >= 0 && p > md.indexOf(lines[h]) ? ['header art is not above the heading'] : []; } },
+  // the SkyBuds copy, from profile.json (D20): profile.json's one line right under the header art, linking getskybuds.com;
+  // any bullet is a sourced profile.json fact; the brand name only
+  { id: 'copy-line', run: ({ md, profile }) => {
+    const first = intro(md).find((l) => l.trim());
+    if (first !== profile.intro.line.text) return [`first line under the header art is not profile.json's line: ${first}`];
+    return /\]\(https:\/\/getskybuds\.com[/)]/.test(first) ? [] : ['the first line does not link getskybuds.com'];
+  } },
   { id: 'copy-facts-sourced', run: ({ md, profile }) => { const ok = new Set(profile.intro.facts.filter((f) => /^https:\/\//.test(f.source)).map((f) => f.text)); return facts(md).filter((t) => !ok.has(t)).map((t) => `fact line not in profile.json with a source: ${t}`); } },
-  { id: 'copy-facts-count', run: ({ md }) => (facts(md).length >= 3 ? [] : ['fewer than 3 fact lines']) },
   { id: 'copy-brand-only', run: ({ md }) => (/\b(Inc|LLC|Ltd|GmbH|ApS|Corp)\b\.?/.test(md) ? ['legal entity name in the README (brand name only)'] : []) },
   // the README's own HTML: every tag has only quoted attributes with no raw < or " inside
   { id: 'readme-html', run: ({ md }) => [...md.matchAll(/<(?:img|a|source|picture|p)\b[^\n]*?>/g)].map((m) => m[0])
     .filter((t) => !/^<(?:img|a|source|picture|p)(?:\s+[\w-]+="[^"<>]*")*\s*\/?>$/.test(t)).map((t) => `malformed tag: ${t.slice(0, 80)}`) },
   // the mission log: cards only with data.json, after the SkyBuds section
   { id: 'mission-data', run: ({ md, data }) => (!data && /dist\/(?:mission\/|stats\.svg|trajectory\.svg)/.test(md) ? ['README shows PR cards but there is no data.json'] : []) },
-  { id: 'mission-order', run: ({ md }) => { const m = md.indexOf(MISSIONS), f = facts(md).at(-1); return m >= 0 && (!f || m < md.indexOf(`- ${f}`)) ? ['the PR cards are not after the SkyBuds section'] : []; } },
+  { id: 'mission-order', run: ({ md, profile }) => { const m = md.indexOf(MISSIONS), l = md.indexOf(profile.intro.line.text); return m >= 0 && (l < 0 || m < l) ? ['the PR cards are not after the intro line'] : []; } },
   // every PR is an open or merged PR in an allowlisted org, its tile named from its repo and number
   { id: 'mission-allowlist', run: ({ data, orgs }) => (data?.prs || []).flatMap((p) => {
     const problems = [];

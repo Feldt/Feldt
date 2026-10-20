@@ -1,5 +1,5 @@
-// M1.T6 README: SkyBuds first (heading and first line), every fact line sourced in profile.json, brand name
-// only, the themed header, then the open-source cards with one linked tile per PR from data.json.
+// M1.T6/T6a README: the header art, then profile.json's one line linking SkyBuds (D20), any fact line sourced in
+// profile.json, brand name only, then the open-source cards with one linked tile per PR from data.json.
 // README_URL=<raw README url> also runs the copy checks on the live README.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,22 +28,23 @@ async function withData(out, items) {
   finally { server.close(); }
 }
 
-test('M1.T6: profile.json holds the SkyBuds heading, first line and facts, each fact with an https source', () => {
+test('M1.T6a: profile.json holds one short line that links SkyBuds, and every fact (if any) has an https source', () => {
   const { intro } = profile;
-  assert.match(intro.heading, /SkyBuds/);
-  assert.match(intro.line.text, /SkyBuds/);
+  assert.equal(intro.heading, undefined, 'no heading (D20)');
+  assert.match(intro.line.text, /\]\(https:\/\/getskybuds\.com\)/);
+  assert.ok(intro.line.text.length <= 80, 'one short line');
   assert.match(intro.line.source, /^https:\/\//);
-  assert.ok(intro.facts.length >= 3);
   for (const f of intro.facts) assert.match(f.source, /^https:\/\//, f.text);
 });
 
-test('M1.T6: the README leads with the header art, then a SkyBuds heading and line, then sourced facts only', () => {
+test('M1.T6a: the README leads with the header art, then profile.json\'s line, and passes the copy rules', () => {
   const out = tmp('readme-');
   assert.equal(render(out).status, 0);
   const md = readme(out);
   assert.deepEqual(copyProblems(md), []);
   assert.ok(md.startsWith('<p align="center"><picture>'), 'header art first');
-  for (const f of profile.intro.facts) assert.ok(md.includes(`- ${f.text}\n`), f.text);
+  assert.ok(md.includes(`</picture></p>\n\n${profile.intro.line.text}\n`), 'the line right under the art');
+  assert.ok(!/^#{1,3} (?!Open-source missions)/m.test(md), 'no other heading');
 });
 
 test('M1.T6: with data.json the README shows stat chips, the trajectory and one linked tile per PR', async () => {
@@ -60,7 +61,7 @@ test('M1.T6: with data.json the README shows stat chips, the trajectory and one 
   assert.equal(tiles.length, stats.prs);
   assert.deepEqual(tiles.map((m) => [m[1], m[2]]), prs.map((p) => [p.url, p.tile]));
   assert.ok(!/alt="[^"]*<|alt="[^"]*"overflow/.test(md), 'titles escaped in alt text');
-  assert.ok(md.indexOf('dist/stats.svg') > md.indexOf(profile.intro.facts.at(-1).text), 'cards come after the SkyBuds section');
+  assert.ok(md.indexOf('dist/stats.svg') > md.indexOf(profile.intro.line.text), 'cards come after the intro line');
   const r = check(out);
   assert.equal(r.status, 0, r.stderr);
 });

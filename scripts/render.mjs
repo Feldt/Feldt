@@ -55,12 +55,9 @@ export function render(out, profile = JSON.parse(readFileSync(join(ROOT, 'profil
     `<img src="${HEADER_FALLBACK[0]}" alt="${alt}" width="100%">`,
     '</picture></p>',
     '',
-    `## ${profile.intro.heading}`,
-    '',
     profile.intro.line.text,
     '',
-    ...profile.intro.facts.map((f) => `- ${f.text}`),
-    '',
+    ...(profile.intro.facts.length ? [...profile.intro.facts.map((f) => `- ${f.text}`), ''] : []),
     ...cards(join(out, 'data.json')),
   ].join('\n');
   for (const [p, body] of Object.entries(files)) writeFileSync(join(out, p), body);
