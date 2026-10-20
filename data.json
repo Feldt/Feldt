@@ -1,10 +1,10 @@
 {
  "query": "is:pr is:public author:Feldt",
  "stats": {
-  "prs": 5,
+  "prs": 8,
   "merged": 0,
-  "open": 5,
-  "repos": 5,
+  "open": 8,
+  "repos": 7,
   "orgs": 5
  },
  "prs": [
@@ -62,6 +62,39 @@
    "created": "2026-10-20T05:31:34Z",
    "merged": null,
    "tile": "dist/mission/uber--h3-1275.svg"
+  },
+  {
+   "repo": "neuralinkcorp/datarepo",
+   "org": "neuralinkcorp",
+   "number": 85,
+   "title": "Quote date, timestamp and large string literals in Delta Lake filters",
+   "url": "https://github.com/neuralinkcorp/datarepo/pull/85",
+   "state": "open",
+   "created": "2026-10-20T08:43:43Z",
+   "merged": null,
+   "tile": "dist/mission/neuralinkcorp--datarepo-85.svg"
+  },
+  {
+   "repo": "teslamotors/fixed-containers",
+   "org": "teslamotors",
+   "number": 244,
+   "title": "[FixedString] Handle insert of a range or view that refers to the string",
+   "url": "https://github.com/teslamotors/fixed-containers/pull/244",
+   "state": "open",
+   "created": "2026-10-20T12:41:37Z",
+   "merged": null,
+   "tile": "dist/mission/teslamotors--fixed-containers-244.svg"
+  },
+  {
+   "repo": "NASA-AMMOS/MMGIS",
+   "org": "NASA-AMMOS",
+   "number": 1133,
+   "title": "#442 - Give header layers an empty sublayers array when it is missing",
+   "url": "https://github.com/NASA-AMMOS/MMGIS/pull/1133",
+   "state": "open",
+   "created": "2026-10-20T13:41:25Z",
+   "merged": null,
+   "tile": "dist/mission/nasa-ammos--mmgis-1133.svg"
   }
  ],
  "logos": {
