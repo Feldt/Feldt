@@ -1,188 +1,37 @@
 {
  "query": "is:pr is:public author:Feldt",
  "stats": {
-  "prs": 9,
+  "prs": 2,
   "merged": 0,
-  "open": 9,
-  "repos": 7,
-  "orgs": 5
+  "open": 2,
+  "repos": 1,
+  "orgs": 1
  },
  "prs": [
   {
-   "repo": "teslamotors/kafka-helmsman",
-   "org": "teslamotors",
-   "number": 97,
-   "title": "Topic enforcer: don't try to decrease partition counts",
-   "url": "https://github.com/teslamotors/kafka-helmsman/pull/97",
+   "repo": "cloudflare/workerd",
+   "org": "cloudflare",
+   "number": 7858,
+   "title": "Fix Duplex.from() for iterables and async generator functions",
+   "url": "https://github.com/cloudflare/workerd/pull/7858",
    "state": "open",
-   "created": "2026-10-20T02:13:15Z",
+   "created": "2026-10-20T20:44:58Z",
    "merged": null,
-   "tile": "dist/mission/teslamotors--kafka-helmsman-97.svg"
+   "tile": "dist/mission/cloudflare--workerd-7858.svg"
   },
   {
-   "repo": "neuralink/tsui",
-   "org": "neuralink",
-   "number": 38,
-   "title": "Fix machine details preview overflowing an 80 column terminal",
-   "url": "https://github.com/neuralink/tsui/pull/38",
+   "repo": "cloudflare/workerd",
+   "org": "cloudflare",
+   "number": 7859,
+   "title": "Decode node:crypto cipher string output across update() and final()",
+   "url": "https://github.com/cloudflare/workerd/pull/7859",
    "state": "open",
-   "created": "2026-10-20T02:13:17Z",
+   "created": "2026-10-20T21:04:34Z",
    "merged": null,
-   "tile": "dist/mission/neuralink--tsui-38.svg"
-  },
-  {
-   "repo": "neuralinkcorp/datarepo",
-   "org": "neuralinkcorp",
-   "number": 84,
-   "title": "Match contains filters as a literal substring",
-   "url": "https://github.com/neuralinkcorp/datarepo/pull/84",
-   "state": "open",
-   "created": "2026-10-20T02:46:46Z",
-   "merged": null,
-   "tile": "dist/mission/neuralinkcorp--datarepo-84.svg"
-  },
-  {
-   "repo": "NASA-AMMOS/3DTilesRendererJS",
-   "org": "NASA-AMMOS",
-   "number": 1773,
-   "title": "BatchTable: Fix getDataFromId for VEC2, VEC3, VEC4 binary properties",
-   "url": "https://github.com/NASA-AMMOS/3DTilesRendererJS/pull/1773",
-   "state": "open",
-   "created": "2026-10-20T04:16:20Z",
-   "merged": null,
-   "tile": "dist/mission/nasa-ammos--3dtilesrendererjs-1773.svg"
-  },
-  {
-   "repo": "uber/h3",
-   "org": "uber",
-   "number": 1275,
-   "title": "Fix cellsToMultiPolygon CLI emitting unclosed rings in WKT output",
-   "url": "https://github.com/uber/h3/pull/1275",
-   "state": "open",
-   "created": "2026-10-20T05:31:34Z",
-   "merged": null,
-   "tile": "dist/mission/uber--h3-1275.svg"
-  },
-  {
-   "repo": "neuralinkcorp/datarepo",
-   "org": "neuralinkcorp",
-   "number": 85,
-   "title": "Quote date, timestamp and large string literals in Delta Lake filters",
-   "url": "https://github.com/neuralinkcorp/datarepo/pull/85",
-   "state": "open",
-   "created": "2026-10-20T08:43:43Z",
-   "merged": null,
-   "tile": "dist/mission/neuralinkcorp--datarepo-85.svg"
-  },
-  {
-   "repo": "teslamotors/fixed-containers",
-   "org": "teslamotors",
-   "number": 244,
-   "title": "[FixedString] Handle insert of a range or view that refers to the string",
-   "url": "https://github.com/teslamotors/fixed-containers/pull/244",
-   "state": "open",
-   "created": "2026-10-20T12:41:37Z",
-   "merged": null,
-   "tile": "dist/mission/teslamotors--fixed-containers-244.svg"
-  },
-  {
-   "repo": "NASA-AMMOS/MMGIS",
-   "org": "NASA-AMMOS",
-   "number": 1133,
-   "title": "#442 - Give header layers an empty sublayers array when it is missing",
-   "url": "https://github.com/NASA-AMMOS/MMGIS/pull/1133",
-   "state": "open",
-   "created": "2026-10-20T13:41:25Z",
-   "merged": null,
-   "tile": "dist/mission/nasa-ammos--mmgis-1133.svg"
-  },
-  {
-   "repo": "uber/h3",
-   "org": "uber",
-   "number": 1277,
-   "title": "Fix gridRing CLI printing 0 lines in newline output near pentagons",
-   "url": "https://github.com/uber/h3/pull/1277",
-   "state": "open",
-   "created": "2026-10-20T14:43:09Z",
-   "merged": null,
-   "tile": "dist/mission/uber--h3-1277.svg"
+   "tile": "dist/mission/cloudflare--workerd-7859.svg"
   }
  ],
  "logos": {
-  "nasa-ammos": {
-   "n": 64,
-   "bleed": true,
-   "pal": [
-    "#000000",
-    "#d2ba6e",
-    "#463e25",
-    "#8c7c4a",
-    "#b5a05f",
-    "#262214",
-    "#95844e",
-    "#74673d",
-    "#4f462a",
-    "#796b3f"
-   ],
-   "px": "a1373cdca61dbda48cdca10db2ca47dbda10db2ca3c2a42eb2ca8ceb2ca3dbca40cb3ca3c2a3cb3da2cb2ga35c2a3cb3da2cb2ca2cb4a2cb3fa33cbda3db4cadb2ca2dbdb2fadb3ca4c2d2ca4cdhia16db2ca2jbdebc2b3da2dbhb2cadb3da3cdb4ca2cb4da14cb3ca2dbcdbdcb3da2b2cdbc2b2dbda3dbdcdb2c2b2dhd2a14cb3dafb2fcb4gb2acbecdbdcbdcb2cacbda3hbdcb2ca17dbebdacb2aceb3cdbc2bdacbd2bdadbcadbda3cbdcdb2c2a14cebcb2c2bda2jb2dadbcdbdacb4cadbdadbca3cbec2eb3ca13cbdagbcdbda2cb2cacbgdbda2b4cacbdagbca3fb2ca2cdb2ca12gbdadbgdbca2cdha2cb2ebia2db3a2cb2cdbda3cbda4fdbca11cb2cacb4ca8b4ca2hb2da3dbc2becafdbdac2acdbca11cbda3db3a9db2da3cb2ca3dbgadb2db2dacb2db2da12cgca3db2da9cb2da3fb2ca3cdca2db3dfa2hb3dca18cb2ca9cb2da4c2a11c2a6cfa20cb2ca10b2ca48d2a11d2ca1443"
-  },
-  "neuralink": {
-   "n": 64,
-   "bleed": true,
-   "pal": [
-    "#ffffff",
-    "#2b2728",
-    "#716f6f",
-    "#b8b7b7"
-   ],
-   "px": "a1116d2cda15d2a3d3a36cb4cda13cbda2cbda34db3c2b3ca12cb2dacbda33db2ca4db2da11cb2cacbda32db2ca6cbca11cbcbdcbda32b2ca7db2a11cbdbc2bda30db2ca9b2a11cbadb3da29db2ca10cbda10cba2cb2da28db2ca11cbda10cba2db2da27db2ca12dbda10cba3cbda26db2ca13dbca43cb2da14dbca42cb2da16b2a41db2da17b2a40cb2da18b2a39cb2da19cbda37cb2da20cbda36db2da21dbda35cb3c20a2dbca2c14a18cb24a3bca2cb12a47b2a10db3a48b2da9cb2da48b2da8cb2da49cbca7cb2da50cbca6cb2da51dbca5cb2da52db2a4cb2da54b2a3cb2da55b2cdcb2da56db5da59c3da1045"
-  },
-  "neuralinkcorp": {
-   "n": 64,
-   "bleed": true,
-   "pal": [
-    "#ffffff",
-    "#282526",
-    "#706d6e",
-    "#b7b6b7"
-   ],
-   "px": "a1116d2cda15d2a3d3a36cb4ca14cbda2cbda34db3c2b3ca12cb2dacbda33db2ca4db2da11cb2cacbda32db2ca6cbca11cbcbdcbda32b2ca7db2a11cbdbc2bda30db2ca9b2a11cbadb3da29db2ca10cbda10cba2cb2da28db2ca11cbda10cba2db2da27db2ca12dbda10cba3cbda26cb2ca13dbca43db2da15bca42cb2da16b2a41db2da17b2a40cb2da18b2a39cb2da19cbda37cb2da20cbda36db2da21dbda35cb3c20a2dbca2c14a18cb24a2dbca2cb12a47b2a11b3a48b2da9cb2da48cbda8cb2da49cbca7cb2a51dbca6cb2da51dbca5cb2da52db2a4cb2da54b2a3db2da55b2cdcb2da56db5da59c3da1045"
-  },
-  "teslamotors": {
-   "n": 64,
-   "bleed": true,
-   "pal": [
-    "#d41e16",
-    "#ffffff",
-    "#f1b4b1",
-    "#e26964",
-    "#f3afad",
-    "#e03e38",
-    "#d82822",
-    "#ed8985",
-    "#dc332d",
-    "#e14d47",
-    "#e46560",
-    "#e7645f",
-    "#e97f7b",
-    "#f9d7d5",
-    "#f7cac8",
-    "#f3b0ad",
-    "#e34b45"
-   ],
-   "px": "a112ga124ga124ga111if3qj2f3i2aga44fjkmecnb10c2ehlfia35gfmecb24cehfa28ikeb13c2o3c3b13eja23leb9phlfga7ga4ijkmob9mfa18lb7pkfigfjkhepla8me2hljiaijhcb6ca17fb4pkfafkecb7iaga4jb7chlfajhcb3ca18ebefgfhcb11ea5fnb11ekigdcbda20ieb16ea3fb16cda22jb19ha2cb18ca22hb8ce4b6leb5cececnb8da23eb5hfga4eb12ka4idcb5da24ghb3ka3ga3mb12fa7cb2cda28hba8lb12a9cda33ga6fb11ca52b11ca41ga10cb10da52eb10ja38ga13kb10a53fb9ca36ga17b9ca34ga19cb8da33ga20cb8da54db8a31ga24b8a29ga26b7ca56b7ca56cb6da56cb6da56db6a57db5na58b5ca58cb4da58cb4da58db4da58db3na60b3ca60cb2da60cb2da60db2da60db2a62b2a62bca62bca62cda62cda62da672"
-  },
-  "uber": {
-   "n": 64,
-   "bleed": true,
-   "pal": [
-    "#000000",
-    "#ffffff",
-    "#555555",
-    "#aaaaaa",
-    "#a5a5a5"
-   ],
-   "px": "a1544dbda7cb2a2b2a47dbda7cb2a2b2a47dbda7cb2a2b2a47dbda7cb2a2b2a47dbda7cb2a2b2acdb3dca6cdb3eca3cd2aed2a16dbda7cb2a2b2db7ca4cb7da2cb5da16dbda7cb2a2b4dc3db2ca2cb2dc3db2cacb3dc2a16dbda7cb2a2b3ca5db2a2b2da5db2acb2da19dbda7cb2a2b2ca6cb2c2b2a6cb2c2b2a20dbda7cb2a2b2a8b2d2b11c2b2a20db2a7cb2a2b2a8b2d2b11c2b2a20db2a7db2a2b2ca7b2c2b2a10cb2a20cb2da5cb3a2b2da6db2a2b2da6ca2cb2a21db2da3cb4a2b4ca3db2da2db2da3cb2cacb2a21cb4db6a2b5d2b3da4db3d2b3cacb2a23db5c2b2a2b2cdb5ca6cb5dca2cb2a25c2a13c3a11c2a1492"
-  }
+  "cloudflare": null
  }
 }
