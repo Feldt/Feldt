@@ -65,9 +65,12 @@ export function statsSvg(stats) {
     + `<style>.n{font:700 24px ${FONT};fill:${CARD.accent}}.l{font:12px ${FONT};fill:${CARD.dim}}</style>${body}</svg>\n`;
 }
 
-export function trajectorySvg(prs, now = new Date()) {
-  const W = 540, H = 120, pad = 28;
-  const t0 = prs.length ? Date.parse(prs[0].created) : now.getTime() - 86400000, t1 = Math.max(now.getTime(), t0 + 3600000);
+// the x axis runs from the first PR to the last plus a margin, never to "now": the same PRs always draw the same
+// graph, so the hourly Action has nothing to commit until a PR opens, merges or closes
+export function trajectorySvg(prs) {
+  const W = 540, H = 120, pad = 28, DAY = 86400000;
+  const t0 = prs.length ? Date.parse(prs[0].created) : 0, last = prs.length ? Date.parse(prs.at(-1).created) : 0;
+  const t1 = last + Math.max(DAY, (last - t0) * 0.1);
   const max = Math.max(prs.length, 1);
   const x = (t) => +(pad + ((t - t0) / (t1 - t0)) * (W - 2 * pad)).toFixed(1), y = (n) => +(H - pad - (n / max) * (H - 2 * pad)).toFixed(1);
   const pts = prs.map((p, i) => [x(Date.parse(p.created)), y(i + 1), p]);
@@ -98,7 +101,7 @@ export async function build(out, opts = {}) {
   for (const d of [stage, old]) rmSync(d, { recursive: true, force: true });
   mkdirSync(join(stage, 'dist', 'mission'), { recursive: true });
   writeFileSync(join(stage, 'dist', 'stats.svg'), statsSvg(stats));
-  writeFileSync(join(stage, 'dist', 'trajectory.svg'), trajectorySvg(prs, opts.now));
+  writeFileSync(join(stage, 'dist', 'trajectory.svg'), trajectorySvg(prs));
   for (const p of prs) writeFileSync(join(stage, p.tile), tileSvg(p));
   writeFileSync(join(stage, 'data.json'), JSON.stringify({ query: QUERY, stats, prs }, null, 1) + '\n');
   mkdirSync(join(out, 'dist'), { recursive: true });
