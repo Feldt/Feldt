@@ -4,12 +4,13 @@
 // is gone), its per-character counts are unioned across processes, and every uncovered line is named by
 // `<innermost function>|<line text>`. That multiset must equal test/coverage-baseline.json exactly, and the baseline
 // may only lose entries against the base commit (COVERAGE_BASE, else merge-base with origin/main): new untested code
-// adds an entry and fails even when it replaces a line a new test now covers. A script no process loads fails.
+// adds an entry and fails even when it replaces a line a new test now covers. A script (.mjs, .cjs, .js) no process
+// loads fails.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const BASELINE = 'test/coverage-baseline.json';
 
-const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') ? [join(d, e.name)] : []));
+const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : /\.(mjs|cjs|js)$/.test(e.name) ? [join(d, e.name)] : []));
 export const scriptsIn = (root) => Object.fromEntries(walk(join(root, 'scripts')).map((f) => [relative(root, f), readFileSync(f, 'utf8')]).sort(([a], [b]) => (a < b ? -1 : 1)));
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 const readUrl = (url) => { try { const p = fileURLToPath(url); return existsSync(p) ? readFileSync(p, 'utf8') : null; } catch { return null; } };
@@ -130,6 +131,14 @@ test('D24: an inner block with count 0 is uncovered; processes union; comments a
   assert.deepEqual(baselineProblems(m, { 'scripts/z.mjs': C, 'scripts/y.mjs': '' }, m.uncovered), ['scripts/y.mjs: no test loads it']);
 });
 
+test('D24: every script kind under scripts/ is in scope (.mjs, .cjs, .js)', () => {
+  const d = mkdtempSync(join(tmpdir(), 'cov-scope-'));
+  try {
+    for (const f of ['scripts/a.mjs', 'scripts/lib/b.cjs', 'scripts/lib/c.js', 'scripts/notes.md']) { mkdirSync(dirname(join(d, f)), { recursive: true }); writeFileSync(join(d, f), 'x'); }
+    assert.deepEqual(Object.keys(scriptsIn(d)), ['scripts/a.mjs', 'scripts/lib/b.cjs', 'scripts/lib/c.js']);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
 test('D24: the baseline may only shrink against the base commit', () => {
   assert.deepEqual(raiseProblems({ 'scripts/x.mjs': ['a|k'] }, { 'scripts/x.mjs': ['a|k', 'b|j'] }), []);
   assert.deepEqual(raiseProblems({ 'scripts/x.mjs': ['a|k', 'a|k'] }, { 'scripts/x.mjs': ['a|k'] }), ['scripts/x.mjs: baseline entry added since the base commit: a|k']);
@@ -143,6 +152,8 @@ test('D24: every script under scripts/ is measured and its uncovered lines equal
     const tests = readdirSync(join(ROOT, 'test')).filter((f) => f.endsWith('.test.mjs') && f !== 'coverage.test.mjs').map((f) => `test/${f}`);
     // a child of node --test inherits NODE_TEST_CONTEXT and would report to this run instead of running on its own
     const env = { ...process.env, NODE_V8_COVERAGE: v8 }; delete env.NODE_TEST_CONTEXT;
+    // the baseline is one environment's: live checks that a variable switches on stay off here
+    delete env.README_RAW;
     const r = spawnSync(process.execPath, ['--test', '--test-reporter=dot', ...tests], { cwd: ROOT, env, encoding: 'utf8', maxBuffer: 64 << 20 });
     assert.equal(r.status, 0, `the suite failed under coverage:\n${(r.stdout + r.stderr).slice(-3000)}`);
     const dumps = readdirSync(v8).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(v8, f), 'utf8')));
