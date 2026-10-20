@@ -44,14 +44,16 @@ export function shape(items, orgs) {
     })
     .filter((p) => allow.has(p.org.toLowerCase()) && p.state !== 'closed')
     .sort((a, b) => a.created.localeCompare(b.created) || a.url.localeCompare(b.url))
-    // GitHub owner names never hold "--", so owner--repo can't collide (google/deepmind-lab vs google-deepmind/lab)
-    .map((p) => ({ ...p, tile: `dist/mission/${p.repo.replace('/', '--').toLowerCase()}-${p.number}.svg` }));
-  const stats = {
-    prs: prs.length, merged: prs.filter((p) => p.state === 'merged').length, open: prs.filter((p) => p.state === 'open').length,
-    repos: new Set(prs.map((p) => p.repo.toLowerCase())).size, orgs: new Set(prs.map((p) => p.org.toLowerCase())).size,
-  };
-  return { prs, stats };
+    .map((p) => ({ ...p, tile: tileOf(p.repo, p.number) }));
+  return { prs, stats: statsOf(prs) };
 }
+
+// GitHub owner names never hold "--", so owner--repo can't collide (google/deepmind-lab vs google-deepmind/lab)
+export const tileOf = (repo, number) => `dist/mission/${repo.replace('/', '--').toLowerCase()}-${number}.svg`;
+export const statsOf = (prs) => ({
+  prs: prs.length, merged: prs.filter((p) => p.state === 'merged').length, open: prs.filter((p) => p.state === 'open').length,
+  repos: new Set(prs.map((p) => p.repo.toLowerCase())).size, orgs: new Set(prs.map((p) => p.org.toLowerCase())).size,
+});
 
 export function statsSvg(stats) {
   const chips = [[stats.prs, 'PRs'], [stats.merged, 'merged'], [stats.repos, 'repos'], [stats.orgs, 'orgs']];

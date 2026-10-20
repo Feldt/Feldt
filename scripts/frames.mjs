@@ -130,8 +130,8 @@ function visKeyframes(name, vis) {
 export const THEMES = { dark: { bg: '0d1117', text: 'e6edf3' }, light: { bg: 'ffffff', text: '1f2328' } };
 const lin = (v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 const relLum = (rgb) => 0.2126 * lin(rgb[0] / 255) + 0.7152 * lin(rgb[1] / 255) + 0.0722 * lin(rgb[2] / 255);
-const rgbOf = (hex) => [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
-const contrast = (a, b) => { const [x, y] = [relLum(a), relLum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+export const rgbOf = (hex) => [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+export const contrast = (a, b) => { const [x, y] = [relLum(a), relLum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 
 // The Bud's palette for one theme: each colour too close to the page is pushed away from it (toward
 // white on dark, toward black on light) just far enough to read, so the hue stays.

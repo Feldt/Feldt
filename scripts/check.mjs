@@ -9,6 +9,9 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+import { attr, statsAlt, tileLink, HEADER_SOURCES, HEADER_FALLBACK, MISSIONS } from './render.mjs';
+import { statsOf, tileOf, statsSvg, trajectorySvg, tileSvg } from './data.mjs';
+import { THEMES, rgbOf, contrast } from './frames.mjs';
 
 export const MAX_SVG = 150 * 1024;
 
@@ -76,66 +79,109 @@ export function imageRefs(md) {
   return [...new Set(refs)];
 }
 
-// The SkyBuds copy: header art above a SkyBuds heading, a SkyBuds first line, then only profile.json's sourced
-// facts (at least 3), and the brand name only. Shared with the live README test.
-export function copyProblems(md, profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'))) {
-  const problems = [];
-  const lines = md.split('\n');
-  const h = lines.findIndex((l) => /^#{1,3} /.test(l));
-  if (h < 0) return ['no heading'];
-  if (!/SkyBuds/.test(lines[h])) problems.push(`first heading is not about SkyBuds: ${lines[h]}`);
-  const first = lines.slice(h + 1).find((l) => l.trim());
-  if (!first || !/SkyBuds/.test(first)) problems.push(`first line is not about SkyBuds: ${first}`);
-  if (/<picture>/.test(md) && md.indexOf('<picture>') > md.indexOf(lines[h])) problems.push('header art is not above the heading');
-  const end = lines.findIndex((l, i) => i > h && /^#{1,3} /.test(l));
-  const facts = new Set(profile.intro.facts.map((f) => f.text));
-  const listed = lines.slice(h + 1, end < 0 ? undefined : end).filter((x) => /^- /.test(x)).map((x) => x.slice(2));
-  for (const text of listed) if (!facts.has(text)) problems.push(`fact line not in profile.json: ${text}`);
-  if (listed.length < 3) problems.push('fewer than 3 fact lines');
-  if (/\b(Inc|LLC|Ltd|GmbH|ApS|Corp)\b\.?/.test(md)) problems.push('legal entity name in the README (brand name only)');
-  return problems;
-}
+// The publish rules (D18). Each rule takes the rendered profile and returns its problems; check() runs them all.
+// The class test in test/check.test.mjs keeps one break per rule id, so a rule can't be dropped or added unseen.
+// Markup and numbers come from the code that makes them (render.mjs, data.mjs), never re-typed here.
+const local = (ref) => !/^(?:https?:|data:)/.test(ref);
+const clean = (ref) => ref.replace(/^\.?\//, '').split(/[?#]/)[0];
+const svgFiles = (dir, rel) => { const d = join(dir, rel); return existsSync(d) ? readdirSync(d).filter((n) => n.endsWith('.svg')).map((n) => `${rel}/${n}`) : []; };
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-// The mission log: data.json's prs agree with stats.prs, the README links one tile per PR (and no other), and
-// dist/mission holds exactly those tiles.
-export function missionProblems(dir, md) {
-  const file = join(dir, 'data.json');
-  if (!existsSync(file)) return [];
-  const { prs = [], stats = {} } = JSON.parse(readFileSync(file, 'utf8'));
-  const problems = [];
-  if (stats.prs !== prs.length) problems.push(`data.json stats.prs ${stats.prs} != ${prs.length} prs`);
-  const linked = [...md.matchAll(/<a href="([^"]+)"><img src="(dist\/mission\/[^"]+)"/g)].map((m) => `${m[1]} ${m[2]}`);
-  const want = prs.map((p) => `${p.url} ${p.tile}`);
-  for (const t of want) if (!linked.includes(t)) problems.push(`README lacks the tile for ${t}`);
-  for (const t of linked) if (!want.includes(t)) problems.push(`README tile not in data.json: ${t}`);
-  if (linked.length !== want.length) problems.push(`README has ${linked.length} tiles for ${want.length} prs`);
-  const mission = join(dir, 'dist', 'mission');
-  const files = existsSync(mission) ? readdirSync(mission).map((f) => `dist/mission/${f}`) : [];
-  for (const p of prs) if (!files.includes(p.tile)) problems.push(`tile file missing: ${p.tile}`);
-  for (const f of files) if (!prs.some((p) => p.tile === f)) problems.push(`tile file for no PR: ${f}`);
-  return problems;
+function intro(md) {
+  const lines = md.split('\n'), h = lines.findIndex((l) => /^#{1,3} /.test(l));
+  const end = lines.findIndex((l, i) => i > h && /^#{1,3} /.test(l));
+  return { lines, h, section: h < 0 ? [] : lines.slice(h + 1, end < 0 ? undefined : end) };
+}
+const facts = (md) => intro(md).section.filter((x) => /^- /.test(x)).map((x) => x.slice(2));
+
+export const RULES = [
+  // images: every local image the README shows exists and is a publishable SVG; so is every SVG we ship
+  { id: 'image-missing', run: ({ dir, refs }) => refs.filter((r) => !existsSync(join(dir, r))).map((r) => `README image missing: ${r}`) },
+  { id: 'image-svg', run: ({ dir, refs, files }) => [...new Set([...refs.filter((r) => existsSync(join(dir, r))), ...files])].flatMap((r) => svgProblems(join(dir, r), r)) },
+  { id: 'header-svg', run: ({ refs }) => (refs.some((r) => r.endsWith('.svg')) ? [] : ['README shows no local SVG image (the header)']) },
+  // the themed header: one <picture> at the top with the mobile and dark sources in order and the light fallback
+  { id: 'header-picture', run: ({ md }) => {
+    const pic = /^<p align="center"><picture>([\s\S]*?)<\/picture><\/p>/.exec(md);
+    if (!pic) return ['README does not open with the <picture> header'];
+    const got = [...pic[1].matchAll(/<source media="([^"]+)" srcset="([^"]+)">/g)].map((m) => [m[1], m[2]]);
+    const problems = sameJson(got, HEADER_SOURCES.map(([m, f]) => [m, f])) ? [] : [`header sources ${JSON.stringify(got)}`];
+    if (!new RegExp(`<img src="${HEADER_FALLBACK[0]}" alt="[^"]+"`).test(pic[1])) problems.push('header has no light fallback with alt text');
+    return problems;
+  } },
+  // every Bud colour reads on its theme's GitHub background
+  { id: 'header-contrast', run: ({ dir }) => [...HEADER_SOURCES.map(([, f, t]) => [f, t]), HEADER_FALLBACK].flatMap(([f, theme]) => {
+    if (!existsSync(join(dir, f))) return [];
+    const bg = rgbOf(THEMES[theme].bg);
+    return [...readFileSync(join(dir, f), 'utf8').matchAll(/\.c\d+\{fill:#([0-9a-f]{6})\}/g)].map((m) => m[1])
+      .filter((c) => contrast(rgbOf(c), bg) < 1.5).map((c) => `${f}: #${c} too close to #${THEMES[theme].bg}`);
+  }) },
+  // at 375 px (343 px of content) the mobile header's glyphs are at least 6 px
+  { id: 'header-mobile-glyphs', run: ({ dir }) => HEADER_SOURCES.filter(([m]) => /max-width/.test(m)).flatMap(([, f]) => {
+    if (!existsSync(join(dir, f))) return [];
+    const s = readFileSync(join(dir, f), 'utf8'), font = Number(/font-size:([\d.]+)px/.exec(s)?.[1]), w = Number(/viewBox="0 0 ([\d.]+) /.exec(s)?.[1]);
+    const px = font * Math.min(1, 343 / w);
+    return px >= 6 ? [] : [`${f}: glyphs ${px.toFixed(2)} px at 375 px wide`];
+  }) },
+  // the SkyBuds copy, from profile.json
+  { id: 'copy-heading', run: ({ md }) => { const { lines, h } = intro(md); return h < 0 ? ['no heading'] : /SkyBuds/.test(lines[h]) ? [] : [`first heading is not about SkyBuds: ${lines[h]}`]; } },
+  { id: 'copy-first-line', run: ({ md }) => { const { lines, h } = intro(md); const first = lines.slice(h + 1).find((l) => l.trim()); return first && /SkyBuds/.test(first) ? [] : [`first line is not about SkyBuds: ${first}`]; } },
+  { id: 'copy-art-first', run: ({ md }) => { const { lines, h } = intro(md); const p = md.indexOf('<picture>'); return p >= 0 && h >= 0 && p > md.indexOf(lines[h]) ? ['header art is not above the heading'] : []; } },
+  { id: 'copy-facts-sourced', run: ({ md, profile }) => { const ok = new Set(profile.intro.facts.filter((f) => /^https:\/\//.test(f.source)).map((f) => f.text)); return facts(md).filter((t) => !ok.has(t)).map((t) => `fact line not in profile.json with a source: ${t}`); } },
+  { id: 'copy-facts-count', run: ({ md }) => (facts(md).length >= 3 ? [] : ['fewer than 3 fact lines']) },
+  { id: 'copy-brand-only', run: ({ md }) => (/\b(Inc|LLC|Ltd|GmbH|ApS|Corp)\b\.?/.test(md) ? ['legal entity name in the README (brand name only)'] : []) },
+  // the README's own HTML: every tag has only quoted attributes with no raw < or " inside
+  { id: 'readme-html', run: ({ md }) => [...md.matchAll(/<(?:img|a|source|picture|p)\b[^\n]*?>/g)].map((m) => m[0])
+    .filter((t) => !/^<(?:img|a|source|picture|p)(?:\s+[\w-]+="[^"<>]*")*\s*\/?>$/.test(t)).map((t) => `malformed tag: ${t.slice(0, 80)}`) },
+  // the mission log: cards only with data.json, after the SkyBuds section
+  { id: 'mission-data', run: ({ md, data }) => (!data && /dist\/(?:mission\/|stats\.svg|trajectory\.svg)/.test(md) ? ['README shows PR cards but there is no data.json'] : []) },
+  { id: 'mission-order', run: ({ md }) => { const m = md.indexOf(MISSIONS), f = facts(md).at(-1); return m >= 0 && (!f || m < md.indexOf(`- ${f}`)) ? ['the PR cards are not after the SkyBuds section'] : []; } },
+  // every PR is an open or merged PR in an allowlisted org, its tile named from its repo and number
+  { id: 'mission-allowlist', run: ({ data, orgs }) => (data?.prs || []).flatMap((p) => {
+    const problems = [];
+    if (!orgs.has(String(p.repo).split('/')[0].toLowerCase())) problems.push(`PR outside the org allowlist: ${p.url}`);
+    if (p.url !== `https://github.com/${p.repo}/pull/${p.number}`) problems.push(`PR url does not match its repo and number: ${p.url}`);
+    if (!['open', 'merged'].includes(p.state)) problems.push(`PR neither open nor merged: ${p.url}`);
+    if (p.tile !== tileOf(p.repo, p.number)) problems.push(`tile name ${p.tile} for ${p.url}`);
+    return problems;
+  }) },
+  { id: 'mission-stats', run: ({ data }) => (data && !sameJson(data.stats, statsOf(data.prs)) ? [`data.json stats ${JSON.stringify(data.stats)} != ${JSON.stringify(statsOf(data.prs))} from its prs`] : []) },
+  // the README shows exactly render.mjs's markup for each PR, and the stat chips' alt, nothing else
+  { id: 'mission-tiles', run: ({ md, data }) => {
+    if (!data) return [];
+    const problems = data.prs.filter((p) => !md.includes(tileLink(p))).map((p) => `README lacks the tile for ${p.url}`);
+    const shown = (md.match(/dist\/mission\//g) || []).length;
+    if (shown !== data.prs.length) problems.push(`README shows ${shown} tiles for ${data.prs.length} prs`);
+    if (!md.includes(`alt="${attr(statsAlt(statsOf(data.prs)))}"`)) problems.push('stat chips alt does not match the prs');
+    return problems;
+  } },
+  // the published SVGs are exactly what data.mjs draws from data.json, and dist/mission holds nothing else
+  { id: 'mission-svgs', run: ({ dir, data }) => {
+    if (!data) return [];
+    const want = { 'dist/stats.svg': statsSvg(statsOf(data.prs)), 'dist/trajectory.svg': trajectorySvg(data.prs), ...Object.fromEntries(data.prs.map((p) => [p.tile, tileSvg(p)])) };
+    const problems = Object.entries(want).filter(([f, body]) => !existsSync(join(dir, f)) || readFileSync(join(dir, f), 'utf8') !== body).map(([f]) => `${f} missing or not drawn from data.json`);
+    for (const f of svgFiles(dir, 'dist/mission')) if (!(f in want)) problems.push(`tile file for no PR: ${f}`);
+    return problems;
+  } },
+];
+
+// The SkyBuds copy rules alone, for the live README test.
+export function copyProblems(md, profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'))) {
+  return RULES.filter((r) => r.id.startsWith('copy-')).flatMap((r) => r.run({ md, profile }));
 }
 
 export function check(dir) {
-  const problems = [], readme = join(dir, 'README.md');
+  const readme = join(dir, 'README.md');
   if (!existsSync(readme)) return ['README.md missing'];
   const md = readFileSync(readme, 'utf8');
-  problems.push(...copyProblems(md), ...missionProblems(dir, md));
-  const local = imageRefs(md).filter((r) => !/^(?:https?:|data:)/.test(r)).map((r) => r.replace(/^\.?\//, '').split(/[?#]/)[0]);
-  const checked = new Set();
-  for (const r of local) {
-    const p = join(dir, r);
-    if (!existsSync(p)) { problems.push(`README image missing: ${r}`); continue; }
-    checked.add(resolve(p));
-    problems.push(...svgProblems(p, r));
-  }
-  if (!local.some((r) => r.endsWith('.svg'))) problems.push('README shows no local SVG image (the header)');
-  const dist = join(dir, 'dist');
-  const svgs = (d, rel) => existsSync(d) ? readdirSync(d).filter((n) => n.endsWith('.svg')).map((n) => [join(d, n), `${rel}/${n}`]) : [];
-  for (const [p, label] of [...svgs(dist, 'dist'), ...svgs(join(dist, 'mission'), 'dist/mission')]) {
-    if (!checked.has(resolve(p))) problems.push(...svgProblems(p, label));
-  }
-  return problems;
+  const ctx = {
+    dir, md,
+    refs: [...new Set(imageRefs(md).filter(local).map(clean))],
+    files: [...svgFiles(dir, 'dist'), ...svgFiles(dir, 'dist/mission')],
+    data: existsSync(join(dir, 'data.json')) ? JSON.parse(readFileSync(join(dir, 'data.json'), 'utf8')) : null,
+    profile: JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8')),
+    orgs: new Set(JSON.parse(readFileSync(join(ROOT, 'pr-rules.json'), 'utf8')).orgs.map((o) => o.toLowerCase())),
+  };
+  return RULES.flatMap((r) => r.run(ctx).map((p) => `[${r.id}] ${p}`));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
