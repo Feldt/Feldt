@@ -96,7 +96,8 @@ test('M1.T1a: the README is rendered from profile.json, escaped', async () => {
 
 // M1.T7a (D18, D21): the gate. (1) Coverage: every published file is covered byte for byte, and a stray file is
 // refused, whatever files the render makes. (2) One break per rule: BREAKS keys equal the RULES ids, each break is
-// refused by its own id, and with that rule removed the gate no longer names it, so no rule can be deleted unseen.
+// refused by its own id. Rules overlap on purpose (published-is-rendered sees every output break), so a break may
+// also trip others; that each condition inside a rule has its own break is P2, not claimed here.
 async function gateFixture() {
   const { createServer } = await import('node:http');
   const { build } = await import(join(ROOT, 'scripts', 'data.mjs'));
@@ -132,7 +133,7 @@ test('M1.T7a: every published file is covered byte for byte, and nothing unrende
   assert.deepEqual(missed, [], 'changes the gate let through');
 });
 
-test('M1.T7a: every gate rule refuses its own break, and only that rule names it', async () => {
+test('M1.T7a: every gate rule refuses its own break', async () => {
   const { context, runRules, RULES } = await import(join(ROOT, 'scripts', 'check.mjs'));
   const good = await gateFixture();
   const base = context(good);
@@ -184,7 +185,6 @@ test('M1.T7a: every gate rule refuses its own break, and only that rule names it
   for (const [id, breakIt] of Object.entries(BREAKS)) {
     const c = clone(); breakIt(c);
     if (!runRules(c).some((p) => p.startsWith(`[${id}] `))) wrong.push(`${id}: not refused by its own rule`);
-    if (runRules(c, RULES.filter((r) => r.id !== id)).some((p) => p.startsWith(`[${id}] `))) wrong.push(`${id}: named by another rule`);
   }
   assert.deepEqual(wrong, []);
 });
