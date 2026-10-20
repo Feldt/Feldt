@@ -5,8 +5,11 @@
       "url": "https://getskybuds.com/cdn/pdp-ash-plush-900.webp",
       "file": "assets/bud/ash-plush-480.png",
       "sha256": "93e41a1ea466ded983e7087c171abe4e8a6f235d709d626581550f5d38fa9dae",
-      "note": "Downscaled with sips from the public product image; © SkyBuds, not licensed for reuse."
+      "note": "Downscaled with sips from the public product image; \u00a9 SkyBuds, not licensed for reuse."
     },
     "animation": "2d-warp"
+  },
+  "header": {
+    "tagline": "I build SkyBuds: plush friends kids talk with"
   }
 }

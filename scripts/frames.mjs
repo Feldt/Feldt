@@ -126,9 +126,28 @@ function visKeyframes(name, vis) {
   return `@keyframes ${name}{${vis.map((v, i) => `${+((i * 100) / n).toFixed(3)}%{opacity:${v ? 1 : 0}}`).join('')}100%{opacity:${vis[0] ? 1 : 0}}}`;
 }
 
-export function loopSvg(loop, { fontSize = 10 } = {}) {
+// GitHub's page backgrounds and text colours per theme
+export const THEMES = { dark: { bg: '0d1117', text: 'e6edf3' }, light: { bg: 'ffffff', text: '1f2328' } };
+const lin = (v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+const relLum = (rgb) => 0.2126 * lin(rgb[0] / 255) + 0.7152 * lin(rgb[1] / 255) + 0.0722 * lin(rgb[2] / 255);
+const rgbOf = (hex) => [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const contrast = (a, b) => { const [x, y] = [relLum(a), relLum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+// The Bud's palette for one theme: each colour too close to the page is pushed away from it (toward
+// white on dark, toward black on light) just far enough to read, so the hue stays.
+export function themePalette(hex, theme, min = 1.8) {
+  const bg = rgbOf(THEMES[theme].bg), to = theme === 'dark' ? 255 : 0;
+  return hex.map((h) => {
+    let c = rgbOf(h);
+    for (let k = 0; k < 40 && contrast(c, bg) < min; k++) c = c.map((v) => Math.round(v + (to - v) * 0.08));
+    return c.map((v) => v.toString(16).padStart(2, '0')).join('');
+  });
+}
+
+export function loopSvg(loop, { fontSize = 10, theme = 'dark', tagline = '' } = {}) {
   const cw = +(fontSize * 0.6).toFixed(3), lh = fontSize * 1.2, n = loop.timeline.length, dur = +(n * STEP_S).toFixed(2);
-  const cols = loop.base[0].length, rows = loop.base.length, W = +(cols * cw).toFixed(2), H = +((rows + 1) * lh + 6).toFixed(2);
+  const cols = loop.base[0].length, rows = loop.base.length, W = +(cols * cw).toFixed(2), budH = (rows + 1) * lh + 6;
+  const tagFont = 14, H = +(budH + (tagline ? tagFont * 1.8 : 0)).toFixed(2);
   const deltas = Object.fromEntries(loop.frames.map((f) => [f.id, deltaRows(loop.base, f.grid)]));
   // base rows grouped by the steps they are hidden on
   const patterns = new Map();
@@ -141,16 +160,23 @@ export function loopSvg(loop, { fontSize = 10 } = {}) {
   });
   const css = [
     `text{font-family:${FONT};font-size:${fontSize}px;white-space:pre}`,
-    ...loop.palette.map((h, i) => `.c${i}{fill:#${h}}`),
+    ...themePalette(loop.palette, theme).map((h, i) => `.c${i}{fill:#${h}}`),
     `#float{animation:float ${dur}s infinite step-end}`,
     `@keyframes float{${loop.timeline.map((s, i) => `${+((i * 100) / n).toFixed(3)}%{transform:translateY(${s.dy * 2}px)}`).join('')}100%{transform:translateY(${loop.timeline[0].dy * 2}px)}}`,
     ...[...patterns.values()].map((p) => `.${p.name}{animation:${p.name} ${dur}s infinite step-end}${visKeyframes(p.name, p.vis)}`),
     ...loop.frames.map((f) => `.${f.id}{opacity:0;animation:${f.id} ${dur}s infinite step-end}${visKeyframes(f.id, loop.timeline.map((s) => s.frame === f.id))}`),
+    ...(tagline ? [
+      // types one character per step over the first 35% of three Bud loops, then holds
+      `#tagline{font-size:${tagFont}px;fill:#${THEMES[theme].text};animation:type ${+(dur * 3).toFixed(2)}s infinite steps(${tagline.length},end)}`,
+      '@keyframes type{0%{clip-path:inset(0 100% 0 0)}35%{clip-path:inset(0 0 0 0)}100%{clip-path:inset(0 0 0 0)}}',
+    ] : []),
     '@media (prefers-reduced-motion:reduce){*{animation:none!important}g[class^="f"]{opacity:0}}',
   ].join('\n');
+  const tagX = +((W - tagline.length * tagFont * 0.6) / 2).toFixed(2), tagY = +(budH + tagFont * 1.2).toFixed(2);
+  const tag = tagline ? `\n<text id="tagline" x="${Math.max(0, tagX)}" y="${tagY}">${esc(tagline)}</text>` : '';
   const base = loop.base.map((row, y) => rowText(row, y, cw, lh, rowClass[y] ? ` class="${rowClass[y]}"` : '')).join('\n');
   const frames = loop.frames.map((f) => `<g class="${f.id}">\n${deltas[f.id].map((y) => rowText(f.grid[y], y, cw, lh)).join('\n')}\n</g>`).join('\n');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" data-cell="${cw}" role="img" aria-label="Ash, a SkyBuds plush, floating, flapping and blinking in colour ASCII">\n<style>\n${css}\n</style>\n<g id="float">\n<g class="base">\n${base}\n</g>\n${frames}\n</g>\n</svg>\n`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" data-cell="${cw}" role="img" aria-label="Ash, a SkyBuds plush, floating, flapping and blinking in colour ASCII">\n<style>\n${css}\n</style>\n<g id="float">\n<g class="base">\n${base}\n</g>\n${frames}\n</g>${tag}\n</svg>\n`;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -24,30 +24,30 @@ test('M1.T1: render writes a README whose every local image exists in the output
 test('M1.T1: render is deterministic for the same profile.json', () => {
   const a = built(), b = built();
   assert.equal(readFileSync(join(a, 'README.md'), 'utf8'), readFileSync(join(b, 'README.md'), 'utf8'));
-  assert.equal(readFileSync(join(a, 'dist', 'header.svg'), 'utf8'), readFileSync(join(b, 'dist', 'header.svg'), 'utf8'));
+  for (const v of ['dark', 'light', 'mobile-dark', 'mobile-light']) assert.equal(readFileSync(join(a, 'dist', `header-${v}.svg`), 'utf8'), readFileSync(join(b, 'dist', `header-${v}.svg`), 'utf8'), v);
 });
 
 test('M1.T1: check refuses a README pointing at a missing image', () => {
   const out = built();
-  rmSync(join(out, 'dist', 'header.svg'));
+  rmSync(join(out, 'dist', 'header-light.svg'));
   const r = check(out);
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /header\.svg/);
+  assert.match(r.stderr, /header-light\.svg/);
 });
 
 test('M1.T1: check refuses an SVG over 150 KB or one that is not well-formed XML', () => {
   const big = built();
-  writeFileSync(join(big, 'dist', 'header.svg'), `<svg xmlns="http://www.w3.org/2000/svg"><!-- ${'x'.repeat(151 * 1024)} --></svg>`);
+  writeFileSync(join(big, 'dist', 'header-light.svg'), `<svg xmlns="http://www.w3.org/2000/svg"><!-- ${'x'.repeat(151 * 1024)} --></svg>`);
   assert.equal(check(big).status, 1);
   assert.match(check(big).stderr, /150 KB/);
   const bad = built();
-  writeFileSync(join(bad, 'dist', 'header.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><text>unclosed</svg>');
+  writeFileSync(join(bad, 'dist', 'header-light.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><text>unclosed</svg>');
   assert.equal(check(bad).status, 1);
   assert.match(check(bad).stderr, /XML/);
 });
 
 const SVGNS = 'xmlns="http://www.w3.org/2000/svg"';
-function withHeader(svg) { const out = built(); writeFileSync(join(out, 'dist', 'header.svg'), svg); return check(out); }
+function withHeader(svg) { const out = built(); writeFileSync(join(out, 'dist', 'header-light.svg'), svg); return check(out); }
 
 test('M1.T1a: check refuses an SVG with a bare &, an unknown entity, a repeated attribute or no SVG namespace', () => {
   for (const [svg, why] of [
@@ -64,7 +64,7 @@ test('M1.T1a: check refuses an SVG with a bare &, an unknown entity, a repeated 
 });
 
 test('M1.T1a: check follows every image form the README uses, and needs at least one local SVG', () => {
-  for (const md of ['![bud](dist/missing.svg)\n', "<img src='dist/gone.svg'>\n", '<picture><source srcset="dist/a.svg 1x, dist/b.svg 2x"><img src="dist/header.svg"></picture>\n']) {
+  for (const md of ['![bud](dist/missing.svg)\n', "<img src='dist/gone.svg'>\n", '<picture><source srcset="dist/a.svg 1x, dist/b.svg 2x"><img src="dist/header-light.svg"></picture>\n']) {
     const out = built();
     writeFileSync(join(out, 'README.md'), md);
     const r = check(out);
@@ -80,13 +80,13 @@ test('M1.T1a: check follows every image form the README uses, and needs at least
 test('M1.T1a: every referenced image is checked as an SVG, wherever it lives', () => {
   const out = built();
   writeFileSync(join(out, 'x.png'), '{"not":"an svg"}');
-  writeFileSync(join(out, 'README.md'), '<img src="dist/header.svg">\n<img src="x.png">\n');
+  writeFileSync(join(out, 'README.md'), '<img src="dist/header-light.svg">\n<img src="x.png">\n');
   const r = check(out);
   assert.equal(r.status, 1);
   assert.match(r.stderr, /x\.png: not an SVG/);
   const big = built();
   writeFileSync(join(big, 'other.svg'), `<svg ${SVGNS}><!-- ${'x'.repeat(151 * 1024)} --></svg>`);
-  writeFileSync(join(big, 'README.md'), '<img src="dist/header.svg">\n![o](other.svg)\n');
+  writeFileSync(join(big, 'README.md'), '<img src="dist/header-light.svg">\n![o](other.svg)\n');
   assert.match(check(big).stderr, /other\.svg: \d+ bytes, over 150 KB/);
 });
 
