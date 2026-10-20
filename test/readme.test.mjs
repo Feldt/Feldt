@@ -1,5 +1,5 @@
 // M1.T6/T6a README: the header art, then profile.json's one line linking SkyBuds (D20), any fact line sourced in
-// profile.json, brand name only, then the open-source cards with one linked tile per PR from data.json.
+// profile.json, brand name only, and nothing else: no PR tiles (Fred 10-20, after D22).
 // README_RAW=<raw base url at one sha> also checks the live README equals the render of the live data.json.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -48,23 +48,18 @@ test('M1.T6a: the README leads with the banner, then profile.json\'s line, and p
   assert.ok(!/^#/m.test(md), 'no heading');
 });
 
-test('M1.T6b: with data.json the README shows one linked tile per PR after the line, and nothing else (D22)', async () => {
+test('Fred 10-20: with PRs in data.json the README still ends at the line: no PR tiles, no stat chips or chart', async () => {
   const out = tmp('readme-');
-  const { prs, stats } = await withData(out, [
+  const { stats } = await withData(out, [
     pr('nasa/fprime', 6134, 'open', null, '2026-10-19T21:00:00Z', 'Fix <off-by-one> & "overflow"'),
     pr('teslamotors/vehicle-command', 9, 'closed', '2026-10-20T03:00:00Z', '2026-10-19T22:00:00Z', 'Keep key order'),
   ]);
+  assert.equal(stats.prs, 2);
   assert.equal(render(out).status, 0);
   const md = readme(out);
-  assert.ok(!/stats\.svg|trajectory\.svg/.test(md), 'no stat chips or line chart');
-  assert.ok(!existsSync(join(out, 'dist', 'stats.svg')) && !existsSync(join(out, 'dist', 'trajectory.svg')), 'neither is rendered');
-  const tiles = [...md.matchAll(/<a href="([^"]+)"><img src="(dist\/mission\/[^"]+)" alt="([^"]*)"[^>]*><\/a>/g)];
-  assert.equal(tiles.length, stats.prs);
-  assert.deepEqual(tiles.map((m) => [m[1], m[2]]), prs.map((p) => [p.url, p.tile]));
-  assert.ok(!/alt="[^"]*<|alt="[^"]*"overflow/.test(md), 'titles escaped in alt text');
-  const section = md.slice(md.indexOf(profile.intro.line.text) + profile.intro.line.text.length);
-  assert.equal(section.replace(/<a href="[^"]+"><img [^>]+><\/a>\n/g, '').trim(), '', 'nothing but tiles after the line');
-  assert.ok(md.indexOf('<a href="https://github.com/') > md.indexOf(profile.intro.line.text), 'tiles come after the intro line');
+  assert.ok(!/dist\/(mission\/|stats|trajectory)/.test(md), 'no tiles, stat chips or line chart');
+  assert.ok(!/<a href="https:\/\/github\.com\//.test(md), 'no PR links');
+  assert.equal(md.slice(md.indexOf(profile.intro.line.text) + profile.intro.line.text.length).trim(), '', 'nothing after the line');
   assert.ok(!/^#/m.test(md), 'no heading');
   const r = check(out);
   assert.equal(r.status, 0, r.stderr);

@@ -189,9 +189,9 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     'svg-root': (c) => svg(c, pr(c).tile, (s) => s.replace(' xmlns="http://www.w3.org/2000/svg"', '')),
     'svg-wellformed': (c) => svg(c, pr(c).tile, (s) => s.replace('</svg>', '<g></svg>')),
     'svg-size': (c) => svg(c, pr(c).tile, (s) => s.replace('</svg>', `<!-- ${'x'.repeat(151 * 1024)} --></svg>`)),
-    'readme-refs-resolve': (c) => md(c, (m) => m.replace(pr(c).tile, 'dist/gone.svg')),
-    'readme-alts': (c) => md(c, (m) => m.replace(/ alt="[^"]*" width="408"/, ' width="408"')),
-    'readme-html': (c) => md(c, (m) => m.replace('alt="nasa/fprime#1 open: fix 1"', 'alt="nasa/fprime#1 open: fix "1" <b>"')),
+    'readme-refs-resolve': (c) => md(c, (m) => m.replace('src="dist/banner-desktop.svg"', 'src="dist/gone.svg"')),
+    'readme-alts': (c) => md(c, (m) => m.replace(/ alt="[^"]*" width="100%"/, ' width="100%"')),
+    'readme-html': (c) => md(c, (m) => m.replace(' width="100%">', ' width="100%" "1" <b>">')),
     'banner-picture': (c) => md(c, (m) => m.replace('<source media="(max-width: 600px)" srcset="dist/banner-phone.svg">\n', '')),
     'banner-wellformed': (c) => svg(c, 'dist/banner-phone.svg', (s) => s.replace('</svg>', '<g></svg>')),
     'banner-viewbox': (c) => svg(c, 'dist/banner-phone.svg', (s) => s.replace('viewBox="0 0 640 320"', 'viewBox="0 0 1200 300"')),
@@ -201,8 +201,7 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     'banner-reduced-motion': (c) => svg(c, 'dist/banner-desktop.svg', (s) => s.replace(/@media \(prefers-reduced-motion:\s*reduce\)/, '@media print')),
     'readme-line-first': (c) => md(c, (m) => m.replace('</picture></p>\n', '</picture></p>\n\nHi!\n')),
     'readme-one-heading': (c) => md(c, (m) => m.replace('</picture></p>\n', '</picture></p>\n## About me\n')),
-    'readme-tiles': (c) => md(c, (m) => m.replace(/<a href="[^"]+pull\/2"><img [^>]+><\/a>\n/, '')),
-    'readme-cards-last': (c) => md(c, (m) => { const line = c.profile.intro.line.text; return m.replace(`${line}\n`, '') + `${line}\n`; }),
+    'readme-no-tiles': (c) => md(c, (m) => `${m}<a href="${pr(c).url}"><img src="${pr(c).tile}" alt="a PR" width="408"></a>\n`),
     'tile-csp-safe': (c) => svg(c, pr(c).tile, (s) => s.replace('</svg>', '<image href="https://example.com/a.png"/></svg>')),
   };
   assert.deepEqual(Object.keys(BREAKS).sort(), RULES.map((r) => r.id).sort(), 'one break per gate rule');
