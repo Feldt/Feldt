@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { tmp, run } from './helpers.mjs';
 import { build } from '../scripts/data.mjs';
 import { liveProblems } from '../scripts/check.mjs';
+import { renderFiles } from '../scripts/render.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
@@ -45,15 +46,28 @@ test('M1.T6a: the README leads with the banner, then profile.json\'s line, and p
   assert.equal(c.status, 0, c.stderr);
   assert.ok(md.startsWith('<p align="center"><picture>\n<source media="(max-width: 600px)" srcset="dist/banner-phone.svg">\n<img src="dist/banner-desktop.svg" alt="'), 'the banner first');
   assert.ok(md.includes(`</picture></p>\n\n${profile.intro.line.text}\n`), 'the line right under the art');
-  assert.ok(md.includes(`${profile.intro.line.text}\n\n${profile.intro.facts.map((f) => `- ${f.text}\n`).join('')}`), 'the facts as bullets under the line');
+  if (profile.intro.facts.length) assert.ok(md.includes(`${profile.intro.line.text}\n\n${profile.intro.facts.map((f) => `- ${f.text}\n`).join('')}`), 'the facts as bullets under the line');
+  else assert.ok(!/^- /m.test(md), 'no bullets when there are no facts');
   assert.ok(!/^#/m.test(md), 'no heading');
+});
+
+test('Fred 10-20b: "drop this": no about bullets under the line, and the PR row comes right after it', () => {
+  assert.deepEqual(profile.intro.facts, []);
+  const md = renderFiles(profile, { prs: [] })['README.md'];
+  assert.ok(!/^- /m.test(md), 'no bullet lines');
+  assert.ok(md.endsWith(`${profile.intro.line.text}\n`), 'the line is the last thing with no PRs');
+});
+
+test('M1.T6a: a fact line, if one is ever added back, renders as a bullet under the line', () => {
+  const p = { ...profile, intro: { ...profile.intro, facts: [{ text: 'One fact', source: 'https://getskybuds.com/' }] } };
+  assert.ok(renderFiles(p, null)['README.md'].includes(`${profile.intro.line.text}\n\n- One fact\n`));
 });
 
 test('Fred 10-20: with PRs in data.json the README ends with one small badge per PR, newest first, each linking its PR; no tiles', async () => {
   const out = tmp('readme-');
   const { stats } = await withData(out, [
-    pr('nasa/fprime', 6134, 'open', null, '2026-10-19T21:00:00Z', 'Fix <off-by-one> & "overflow"'),
-    pr('teslamotors/vehicle-command', 9, 'closed', '2026-10-20T03:00:00Z', '2026-10-19T22:00:00Z', 'Keep key order'),
+    pr('cloudflare/workerd', 6134, 'open', null, '2026-10-19T21:00:00Z', 'Fix <off-by-one> & "overflow"'),
+    pr('stripe/stripe-node', 9, 'closed', '2026-10-20T03:00:00Z', '2026-10-19T22:00:00Z', 'Keep key order'),
   ]);
   assert.equal(stats.prs, 2);
   assert.equal(render(out).status, 0);
@@ -63,8 +77,8 @@ test('Fred 10-20: with PRs in data.json the README ends with one small badge per
   const row = after.slice(after.indexOf('\n<p>\n'));
   assert.ok(after.indexOf('\n<p>\n') >= 0 && !row.slice(4).includes('\n\n'), 'one badge row after the line and its facts');
   const links = [...row.matchAll(/<a href="([^"]+)"><picture><source media="\(prefers-color-scheme: dark\)" srcset="(dist\/badges\/[^"]+-dark\.svg)"><img src="(dist\/badges\/[^"]+-light\.svg)" alt="([^"]+)" height="28"><\/picture><\/a>/g)];
-  assert.deepEqual(links.map((m) => m[1]), ['https://github.com/teslamotors/vehicle-command/pull/9', 'https://github.com/nasa/fprime/pull/6134'], 'newest first');
-  assert.deepEqual(links.map((m) => m[4]), ['Merged PR teslamotors/vehicle-command#9: Keep key order', 'Open PR nasa/fprime#6134: Fix &lt;off-by-one&gt; &amp; &quot;overflow&quot;']);
+  assert.deepEqual(links.map((m) => m[1]), ['https://github.com/stripe/stripe-node/pull/9', 'https://github.com/cloudflare/workerd/pull/6134'], 'newest first');
+  assert.deepEqual(links.map((m) => m[4]), ['Merged PR stripe/stripe-node#9: Keep key order', 'Open PR cloudflare/workerd#6134: Fix &lt;off-by-one&gt; &amp; &quot;overflow&quot;']);
   for (const m of links) for (const f of [m[2], m[3]]) assert.ok(existsSync(join(out, f)), `${f} rendered`);
   assert.ok(!/^#/m.test(md), 'no heading');
   const r = check(out);

@@ -10,14 +10,14 @@ const { xmlProblem } = await import(join(ROOT, 'scripts', 'check.mjs'));
 const pr = (repo, number, state = 'open') => ({ repo, org: repo.split('/')[0], number, state, title: 'Fix "a" <b> & c', url: `https://github.com/${repo}/pull/${number}` });
 
 test('badges: one light and one dark file per PR, named from repo and number', () => {
-  assert.deepEqual(badgeOf('NASA-AMMOS/3DTilesRendererJS', 1773), { light: 'dist/badges/nasa-ammos--3dtilesrendererjs-1773-light.svg', dark: 'dist/badges/nasa-ammos--3dtilesrendererjs-1773-dark.svg' });
-  const files = badgeFiles([pr('uber/h3', 1275), pr('nasa/fprime', 6134, 'merged')]);
-  assert.deepEqual(Object.keys(files).sort(), ['dist/badges/nasa--fprime-6134-dark.svg', 'dist/badges/nasa--fprime-6134-light.svg', 'dist/badges/uber--h3-1275-dark.svg', 'dist/badges/uber--h3-1275-light.svg']);
+  assert.deepEqual(badgeOf('huggingface/tokenizers', 1773), { light: 'dist/badges/huggingface--tokenizers-1773-light.svg', dark: 'dist/badges/huggingface--tokenizers-1773-dark.svg' });
+  const files = badgeFiles([pr('uber/h3', 1275), pr('cloudflare/workerd', 6134, 'merged')]);
+  assert.deepEqual(Object.keys(files).sort(), ['dist/badges/cloudflare--workerd-6134-dark.svg', 'dist/badges/cloudflare--workerd-6134-light.svg', 'dist/badges/uber--h3-1275-dark.svg', 'dist/badges/uber--h3-1275-light.svg']);
 });
 
 test('badges: 28 px tall, wide enough for owner/repo #n at the widest monospace advance, and wider for longer text', () => {
   assert.equal(BADGE_H, 28);
-  const short = pr('uber/h3', 1275), long = pr('NASA-AMMOS/3DTilesRendererJS', 1773);
+  const short = pr('uber/h3', 1275), long = pr('huggingface/tokenizers', 1773);
   for (const p of [short, long]) {
     const text = `${p.repo} #${p.number}`.length * 12 * 0.618;
     for (const theme of ['light', 'dark']) {
@@ -58,7 +58,7 @@ test('badges: the README line links the PR, shows the dark file under the dark s
 });
 
 test('badges: the row is a <p> of badge lines, newest PR first, and nothing without PRs', () => {
-  const a = pr('uber/h3', 1275), b = pr('nasa/fprime', 6134);
+  const a = pr('uber/h3', 1275), b = pr('cloudflare/workerd', 6134);
   assert.deepEqual(badgeBlock([a, b]), ['<p>', badgeLine(b), badgeLine(a), '</p>', '']);
   assert.deepEqual(badgeBlock([]), []);
 });

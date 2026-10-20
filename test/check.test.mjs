@@ -126,7 +126,7 @@ async function gateFixture() {
   const { build } = await import(join(ROOT, 'scripts', 'data.mjs'));
   const item = (repo, n, merged) => ({ html_url: `https://github.com/${repo}/pull/${n}`, number: n, title: `fix ${n}`, state: merged ? 'closed' : 'open', created_at: `2026-10-19T2${n}:00:00Z`, repository_url: `https://api.github.com/repos/${repo}`, pull_request: { merged_at: merged ? '2026-10-20T03:00:00Z' : null } });
   const out = tmp('gate-');
-  const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'application/json', connection: 'close' }); res.end(JSON.stringify({ total_count: 2, incomplete_results: false, items: [item('nasa/fprime', 1), item('teslamotors/kafka-helmsman', 2, true)] })); });
+  const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'application/json', connection: 'close' }); res.end(JSON.stringify({ total_count: 2, incomplete_results: false, items: [item('cloudflare/workerd', 1), item('runpod/runpod-python', 2, true)] })); });
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
   try { await build(out, { api: `http://127.0.0.1:${server.address().port}`, avatars: `http://127.0.0.1:${server.address().port}`, token: 'test-token', now: new Date('2026-10-21T00:00:00Z') }); }
   finally { server.close(); }
@@ -176,11 +176,11 @@ test('M1.T7a: every gate rule refuses its own break', async () => {
     'profile-facts-sourced': (c) => { c.profile.intro.facts = [{ text: 'Best toy ever', source: 'trust me' }]; },
     'profile-facts-plain': (c) => { c.profile.intro.facts = [{ text: '<b>Best</b>', source: 'https://getskybuds.com/' }]; },
     'profile-brand-only': (c) => { c.profile.intro.line.text = 'I make [AI plush companions](https://getskybuds.com) at Feldt Toys, Inc.'; },
-    'data-shape': (c) => { c.dataOk = false; c.data.logos = { nasa: { n: 2, bleed: true, pal: ['#ffffff'], px: 'a3' } }; },
+    'data-shape': (c) => { c.dataOk = false; c.data.logos = { cloudflare: { n: 2, bleed: true, pal: ['#ffffff'], px: 'a3' } }; },
     'data-canonical': (c) => { c.dataRaw += '\n'; },
     'data-query': (c) => { c.data.query = 'is:pr author:Feldt'; },
     'pr-allowlisted': (c) => { Object.assign(pr(c), { org: 'someone', repo: 'someone/x' }); },
-    'pr-org-of-repo': (c) => { pr(c).org = 'teslamotors'; },
+    'pr-org-of-repo': (c) => { pr(c).org = 'fishaudio'; },
     'pr-open-or-merged': (c) => { pr(c).state = 'closed'; },
     'pr-url-of-repo': (c) => { pr(c).url = pr(c).url.replace('/pull/1', '/pull/7'); },
     'pr-tile-name': (c) => { pr(c).tile = 'dist/mission/x.svg'; },
@@ -243,7 +243,10 @@ test('M1.T4b: profile-shape refuses buds that are not exactly the Buds the banne
     'a url off getskybuds.com': (p) => { p.buds.pearl.url = 'https://example.com/pdp-pearl-plush-730.webp'; },
     'the old bud key': (p) => { p.bud = { name: 'Ash' }; },
     'an unknown intro key': (p) => { p.intro.heading = 'About me'; },
+    'a fact with an extra key': (p) => { p.intro.facts = [{ text: 'Plush', source: 'https://getskybuds.com/', note: 'x' }]; },
+    'a fact without a source': (p) => { p.intro.facts = [{ text: 'Plush' }]; },
   };
+  assert.equal(profileShape({ ...good, intro: { ...good.intro, facts: [{ text: 'Plush', source: 'https://getskybuds.com/' }] } }), true, 'a sourced fact, if one is added back, is a valid shape');
   const letThrough = [];
   for (const [why, breakIt] of Object.entries(cases)) { const p = structuredClone(good); breakIt(p); if (profileShape(p)) letThrough.push(why); }
   assert.deepEqual(letThrough, []);

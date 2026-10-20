@@ -33,7 +33,7 @@ const PNG = png(48, 48, sample);
 // wrap and truncate, and a closed PR with a repo name too long for its line.
 const pr = (repo, number, title, state) => ({ repo, number, title, state, merged: state === 'merged', url: `https://github.com/${repo}/pull/${number}` });
 const PRS = [
-  pr('teslamotors/kafka-helmsman', 97, "Topic enforcer: don't try to decrease partition counts", 'open'),
+  pr('runpod/runpod-python', 97, "Topic enforcer: don't try to decrease partition counts", 'open'),
   pr('neuralink/tsui', 38, 'Fix machine details preview overflowing an 80 column terminal', 'open'),
   pr('neuralinkcorp/datarepo', 84, 'Match contains filters as a literal substring', 'open'),
   pr('example-org/merged-change', 1, 'A merged change with "double quotes" in its title', 'merged'),
@@ -98,7 +98,7 @@ test('tiles are well-formed: balanced tags, every used glyph defined once', () =
 
 test('tiles are deterministic and say what they show', () => {
   assert.equal(tileSvg(PRS[0], { index: 0, logo }), tileSvg(PRS[0], { index: 0, logo }));
-  assert.match(tiles[0], /aria-label="teslamotors\/kafka-helmsman#97 open: Topic enforcer: don&#39;t|aria-label="teslamotors\/kafka-helmsman#97 open: Topic enforcer: don't/);
+  assert.match(tiles[0], /aria-label="runpod\/runpod-python#97 open: Topic enforcer: don&#39;t|aria-label="runpod\/runpod-python#97 open: Topic enforcer: don't/);
   assert.match(tiles[3], /#8b4dff/, 'merged badge');
   assert.match(tiles[5], /#d4283b/, 'closed badge');
   assert.match(tiles[3], /aria-label="[^"]*&quot;double quotes&quot;/);
