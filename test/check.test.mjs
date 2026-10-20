@@ -101,3 +101,43 @@ test('M1.T1a: the README is rendered from profile.json, escaped', async () => {
     assert.ok(md.includes(`alt="${esc}, a SkyBuds`), md);
   }
 });
+
+// M1.T7a (D18): check.mjs is the one publish gate, so breaking any rule of the published profile makes it refuse:
+// the SkyBuds copy from profile.json, and the mission invariant (data.json prs = stats.prs = README tiles = tile files).
+test('M1.T7a: check refuses a rendered profile with any published rule broken', async () => {
+  const { createServer } = await import('node:http');
+  const { readdirSync, renameSync } = await import('node:fs');
+  const { build } = await import(join(ROOT, 'scripts', 'data.mjs'));
+  const item = (repo, n) => ({ html_url: `https://github.com/${repo}/pull/${n}`, number: n, title: `fix ${n}`, state: 'open', created_at: '2026-10-19T21:00:00Z', repository_url: `https://api.github.com/repos/${repo}`, pull_request: { merged_at: null } });
+  const good = async () => {
+    const out = tmp('gate-');
+    const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'application/json', connection: 'close' }); res.end(JSON.stringify({ total_count: 2, incomplete_results: false, items: [item('nasa/fprime', 1), item('nasa/fprime', 2)] })); });
+    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+    try { await build(out, { api: `http://127.0.0.1:${server.address().port}`, token: 'test-token', now: new Date('2026-10-21T00:00:00Z') }); }
+    finally { server.close(); }
+    assert.equal(render(out).status, 0);
+    return out;
+  };
+  {
+    const ok = await good();
+    assert.equal(check(ok).status, 0, check(ok).stderr);
+    const md = (out) => readFileSync(join(out, 'README.md'), 'utf8');
+    const profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
+    const breaks = {
+      'heading not SkyBuds': (out) => writeFileSync(join(out, 'README.md'), md(out).replace(`## ${profile.intro.heading}`, '## Hello')),
+      'unsourced fact line': (out) => writeFileSync(join(out, 'README.md'), md(out).replace(`- ${profile.intro.facts[0].text}\n`, `- ${profile.intro.facts[0].text}\n- Best toy ever\n`)),
+      'legal entity name': (out) => writeFileSync(join(out, 'README.md'), md(out) + '\nFeldt Toys, Inc.\n'),
+      'tile missing from the README': (out) => writeFileSync(join(out, 'README.md'), md(out).replace(/<a href="[^"]+pull\/2"><img [^>]+><\/a>\n?/, '')),
+      'tile file missing': (out) => { const d = join(out, 'dist', 'mission'); renameSync(join(d, readdirSync(d)[0]), join(out, 'gone.svg')); },
+      'stray tile file': (out) => writeFileSync(join(out, 'dist', 'mission', 'nasa--old-9.svg'), readFileSync(join(out, 'dist', 'stats.svg'))),
+      'stats.prs disagrees': (out) => { const p = join(out, 'data.json'), d = JSON.parse(readFileSync(p, 'utf8')); d.stats.prs = 3; writeFileSync(p, JSON.stringify(d)); },
+      'tile links the wrong PR': (out) => writeFileSync(join(out, 'README.md'), md(out).replace('pull/1"', 'pull/7"')),
+    };
+    for (const [why, breakIt] of Object.entries(breaks)) {
+      const out = await good();
+      breakIt(out);
+      const r = check(out);
+      assert.equal(r.status, 1, `${why}: check passed`);
+    }
+  }
+});

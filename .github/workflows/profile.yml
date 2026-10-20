@@ -1,11 +1,16 @@
 # Renders the profile every hour: Feldt's public PRs in allowlisted orgs (scripts/data.mjs), then the README and
-# header (scripts/render.mjs), checked by scripts/check.mjs. Generated files go to main only when they changed;
+# header (scripts/render.mjs), checked by scripts/check.mjs (the one publish gate: images, copy, mission log). Generated files go to main only when they changed;
 # a stamp naming the rendered commit goes to the orphan `output` branch on every run.
 name: profile
 on:
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
+  # a code change goes live at once, and a stray hand-made commit of generated files is rendered over (D18);
+  # the bot's own pushes use GITHUB_TOKEN, which never triggers workflows, so this cannot loop
+  push:
+    branches: [main]
+    paths: [scripts/**, profile.json, pr-rules.json, assets/**, README.md, data.json, dist/**, .github/workflows/profile.yml]
 permissions:
   contents: write
   actions: write
@@ -53,5 +58,6 @@ jobs:
           git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:output
           cat stamp.txt
       - name: Keep the schedule alive
+        if: always()
         # GitHub turns off schedules after 60 days without repo activity; re-enabling every run keeps it on
         run: gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/profile.yml/enable"

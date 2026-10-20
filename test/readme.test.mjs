@@ -9,6 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmp, run } from './helpers.mjs';
 import { build } from '../scripts/data.mjs';
+import { copyProblems } from '../scripts/check.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'));
@@ -25,29 +26,6 @@ async function withData(out, items) {
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
   try { return await build(out, { api: `http://127.0.0.1:${server.address().port}`, token: 'test-token', now: new Date('2026-10-21T00:00:00Z') }); }
   finally { server.close(); }
-}
-
-// the copy checks, shared by the local and the live README
-function copyProblems(md) {
-  const problems = [];
-  const lines = md.split('\n');
-  const h = lines.findIndex((l) => /^#{1,3} /.test(l));
-  if (h < 0) return ['no heading'];
-  if (!/SkyBuds/.test(lines[h])) problems.push(`first heading is not about SkyBuds: ${lines[h]}`);
-  const first = lines.slice(h + 1).find((l) => l.trim());
-  if (!first || !/SkyBuds/.test(first)) problems.push(`first line is not about SkyBuds: ${first}`);
-  if (/<picture>/.test(md) && md.indexOf('<picture>') > md.indexOf(lines[h])) problems.push('header art is not above the heading');
-  // every list line in the SkyBuds section is a profile.json fact with a source URL
-  const end = lines.findIndex((l, i) => i > h && /^#{1,3} /.test(l));
-  const section = lines.slice(h + 1, end < 0 ? undefined : end);
-  const facts = new Map(profile.intro.facts.map((f) => [f.text, f.source]));
-  for (const l of section.filter((x) => /^- /.test(x))) {
-    const text = l.slice(2);
-    if (!facts.has(text)) problems.push(`fact line not in profile.json: ${text}`);
-  }
-  if (section.filter((x) => /^- /.test(x)).length < 3) problems.push('fewer than 3 fact lines');
-  if (/\b(Inc|LLC|Ltd|GmbH|ApS|Corp)\b\.?/.test(md)) problems.push('legal entity name in the README (brand name only)');
-  return problems;
 }
 
 test('M1.T6: profile.json holds the SkyBuds heading, first line and facts, each fact with an https source', () => {

@@ -1,10 +1,14 @@
 #!/usr/bin/env node
-// check.mjs <dir>: the rendered profile is publishable: the README shows at least one local SVG; every
-// local image it references (html src in either quotes, every srcset candidate, markdown) exists and is an
-// SVG in the SVG namespace, well-formed XML and at most 150 KB; so is every SVG in dist/. Exit 1 lists each problem.
+// check.mjs <dir>: the one publish gate (D18). Every rule of the published profile is checked here, not only in
+// tests: the README shows at least one local SVG; every local image it references (html src in either quotes,
+// every srcset candidate, markdown) exists and is an SVG in the SVG namespace, well-formed XML and at most 150 KB;
+// so is every SVG in dist/; the SkyBuds copy follows profile.json; and with data.json, the mission log has one
+// linked tile per PR and nothing else. Exit 1 lists each problem.
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const MAX_SVG = 150 * 1024;
 
@@ -72,10 +76,52 @@ export function imageRefs(md) {
   return [...new Set(refs)];
 }
 
+// The SkyBuds copy: header art above a SkyBuds heading, a SkyBuds first line, then only profile.json's sourced
+// facts (at least 3), and the brand name only. Shared with the live README test.
+export function copyProblems(md, profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'))) {
+  const problems = [];
+  const lines = md.split('\n');
+  const h = lines.findIndex((l) => /^#{1,3} /.test(l));
+  if (h < 0) return ['no heading'];
+  if (!/SkyBuds/.test(lines[h])) problems.push(`first heading is not about SkyBuds: ${lines[h]}`);
+  const first = lines.slice(h + 1).find((l) => l.trim());
+  if (!first || !/SkyBuds/.test(first)) problems.push(`first line is not about SkyBuds: ${first}`);
+  if (/<picture>/.test(md) && md.indexOf('<picture>') > md.indexOf(lines[h])) problems.push('header art is not above the heading');
+  const end = lines.findIndex((l, i) => i > h && /^#{1,3} /.test(l));
+  const facts = new Set(profile.intro.facts.map((f) => f.text));
+  const listed = lines.slice(h + 1, end < 0 ? undefined : end).filter((x) => /^- /.test(x)).map((x) => x.slice(2));
+  for (const text of listed) if (!facts.has(text)) problems.push(`fact line not in profile.json: ${text}`);
+  if (listed.length < 3) problems.push('fewer than 3 fact lines');
+  if (/\b(Inc|LLC|Ltd|GmbH|ApS|Corp)\b\.?/.test(md)) problems.push('legal entity name in the README (brand name only)');
+  return problems;
+}
+
+// The mission log: data.json's prs agree with stats.prs, the README links one tile per PR (and no other), and
+// dist/mission holds exactly those tiles.
+export function missionProblems(dir, md) {
+  const file = join(dir, 'data.json');
+  if (!existsSync(file)) return [];
+  const { prs = [], stats = {} } = JSON.parse(readFileSync(file, 'utf8'));
+  const problems = [];
+  if (stats.prs !== prs.length) problems.push(`data.json stats.prs ${stats.prs} != ${prs.length} prs`);
+  const linked = [...md.matchAll(/<a href="([^"]+)"><img src="(dist\/mission\/[^"]+)"/g)].map((m) => `${m[1]} ${m[2]}`);
+  const want = prs.map((p) => `${p.url} ${p.tile}`);
+  for (const t of want) if (!linked.includes(t)) problems.push(`README lacks the tile for ${t}`);
+  for (const t of linked) if (!want.includes(t)) problems.push(`README tile not in data.json: ${t}`);
+  if (linked.length !== want.length) problems.push(`README has ${linked.length} tiles for ${want.length} prs`);
+  const mission = join(dir, 'dist', 'mission');
+  const files = existsSync(mission) ? readdirSync(mission).map((f) => `dist/mission/${f}`) : [];
+  for (const p of prs) if (!files.includes(p.tile)) problems.push(`tile file missing: ${p.tile}`);
+  for (const f of files) if (!prs.some((p) => p.tile === f)) problems.push(`tile file for no PR: ${f}`);
+  return problems;
+}
+
 export function check(dir) {
   const problems = [], readme = join(dir, 'README.md');
   if (!existsSync(readme)) return ['README.md missing'];
-  const local = imageRefs(readFileSync(readme, 'utf8')).filter((r) => !/^(?:https?:|data:)/.test(r)).map((r) => r.replace(/^\.?\//, '').split(/[?#]/)[0]);
+  const md = readFileSync(readme, 'utf8');
+  problems.push(...copyProblems(md), ...missionProblems(dir, md));
+  const local = imageRefs(md).filter((r) => !/^(?:https?:|data:)/.test(r)).map((r) => r.replace(/^\.?\//, '').split(/[?#]/)[0]);
   const checked = new Set();
   for (const r of local) {
     const p = join(dir, r);
@@ -85,8 +131,9 @@ export function check(dir) {
   }
   if (!local.some((r) => r.endsWith('.svg'))) problems.push('README shows no local SVG image (the header)');
   const dist = join(dir, 'dist');
-  for (const f of existsSync(dist) ? readdirSync(dist).filter((n) => n.endsWith('.svg')) : []) {
-    if (!checked.has(resolve(join(dist, f)))) problems.push(...svgProblems(join(dist, f), `dist/${f}`));
+  const svgs = (d, rel) => existsSync(d) ? readdirSync(d).filter((n) => n.endsWith('.svg')).map((n) => [join(d, n), `${rel}/${n}`]) : [];
+  for (const [p, label] of [...svgs(dist, 'dist'), ...svgs(join(dist, 'mission'), 'dist/mission')]) {
+    if (!checked.has(resolve(p))) problems.push(...svgProblems(p, label));
   }
   return problems;
 }
