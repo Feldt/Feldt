@@ -1,9 +1,9 @@
 {
  "query": "is:pr is:public author:Feldt",
  "stats": {
-  "prs": 8,
+  "prs": 9,
   "merged": 0,
-  "open": 8,
+  "open": 9,
   "repos": 7,
   "orgs": 5
  },
@@ -95,6 +95,17 @@
    "created": "2026-10-20T13:41:25Z",
    "merged": null,
    "tile": "dist/mission/nasa-ammos--mmgis-1133.svg"
+  },
+  {
+   "repo": "uber/h3",
+   "org": "uber",
+   "number": 1277,
+   "title": "Fix gridRing CLI printing 0 lines in newline output near pentagons",
+   "url": "https://github.com/uber/h3/pull/1277",
+   "state": "open",
+   "created": "2026-10-20T14:43:09Z",
+   "merged": null,
+   "tile": "dist/mission/uber--h3-1277.svg"
   }
  ],
  "logos": {
