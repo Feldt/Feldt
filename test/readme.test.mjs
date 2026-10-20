@@ -48,7 +48,7 @@ test('M1.T6a: the README leads with the header art, then profile.json\'s line, a
   assert.ok(!/^#{1,3} (?!Open-source missions)/m.test(md), 'no other heading');
 });
 
-test('M1.T6: with data.json the README shows stat chips, the trajectory and one linked tile per PR', async () => {
+test('M1.T6b: with data.json the README shows only the heading and one linked tile per PR (D22)', async () => {
   const out = tmp('readme-');
   const { prs, stats } = await withData(out, [
     pr('nasa/fprime', 6134, 'open', null, '2026-10-19T21:00:00Z', 'Fix <off-by-one> & "overflow"'),
@@ -56,24 +56,26 @@ test('M1.T6: with data.json the README shows stat chips, the trajectory and one 
   ]);
   assert.equal(render(out).status, 0);
   const md = readme(out);
-  assert.match(md, /<img src="dist\/stats\.svg" alt="[^"]+"/);
-  assert.match(md, /<img src="dist\/trajectory\.svg" alt="[^"]+"/);
+  assert.ok(!/stats\.svg|trajectory\.svg/.test(md), 'no stat chips or line chart');
+  assert.ok(!existsSync(join(out, 'dist', 'stats.svg')) && !existsSync(join(out, 'dist', 'trajectory.svg')), 'neither is rendered');
   const tiles = [...md.matchAll(/<a href="([^"]+)"><img src="(dist\/mission\/[^"]+)" alt="([^"]*)"[^>]*><\/a>/g)];
   assert.equal(tiles.length, stats.prs);
   assert.deepEqual(tiles.map((m) => [m[1], m[2]]), prs.map((p) => [p.url, p.tile]));
   assert.ok(!/alt="[^"]*<|alt="[^"]*"overflow/.test(md), 'titles escaped in alt text');
-  assert.ok(md.indexOf('dist/stats.svg') > md.indexOf(profile.intro.line.text), 'cards come after the intro line');
+  const section = md.slice(md.indexOf('## Open-source missions'));
+  assert.equal(section.replace(/<a href="[^"]+"><img [^>]+><\/a>\n/g, '').trim(), '## Open-source missions', 'nothing but tiles under the heading');
+  assert.ok(md.indexOf('## Open-source missions') > md.indexOf(profile.intro.line.text), 'tiles come after the intro line');
   const r = check(out);
   assert.equal(r.status, 0, r.stderr);
 });
 
-test('M1.T6: with no PRs yet the README still renders the cards and no tiles, and check passes', async () => {
+test('M1.T6: with no PRs yet the README still renders the heading and no tiles, and check passes', async () => {
   const out = tmp('readme-');
   await withData(out, []);
   assert.equal(render(out).status, 0);
   const md = readme(out);
-  assert.match(md, /dist\/stats\.svg/);
-  assert.ok(!/dist\/mission\//.test(md));
+  assert.ok(md.includes('## Open-source missions'));
+  assert.ok(!/dist\/(mission\/|stats|trajectory)/.test(md));
   assert.equal(check(out).status, 0, check(out).stderr);
 });
 

@@ -116,7 +116,7 @@ test('M1.T7a: every published file is covered byte for byte, and nothing unrende
   const good = await gateFixture();
   assert.deepEqual(gate(good), [], 'a good profile passes');
   const files = Object.keys(context(good).published);
-  assert.ok(files.length >= 9 && files.includes('README.md') && files.some((f) => f.startsWith('dist/mission/')), files.join(' '));
+  assert.ok(files.length >= 7 && files.includes('README.md') && files.some((f) => f.startsWith('dist/mission/')), files.join(' '));
   const copy = () => { const o = tmp('gate-'); cpSync(good, o, { recursive: true }); return o; };
   const missed = [];
   for (const f of files) {
@@ -126,7 +126,7 @@ test('M1.T7a: every published file is covered byte for byte, and nothing unrende
     }
   }
   for (const stray of ['dist/x.svg', 'dist/mission/x.svg', 'dist/a/b.txt']) {
-    const o = copy(); mkdirSync(dirname(join(o, stray)), { recursive: true }); writeFileSync(join(o, stray), readFileSync(join(good, 'dist', 'stats.svg')));
+    const o = copy(); mkdirSync(dirname(join(o, stray)), { recursive: true }); writeFileSync(join(o, stray), readFileSync(join(good, 'dist', 'header-light.svg')));
     if (!gate(o).some((p) => p.startsWith('[published-is-rendered] '))) missed.push(`${stray} stray`);
   }
   assert.deepEqual(missed, [], 'changes the gate let through');
@@ -163,10 +163,10 @@ test('M1.T7a: every gate rule refuses its own break, and only that rule names it
     'prs-unique': (c) => { c.data.prs.push({ ...pr(c), created: '2026-10-22T00:00:00Z' }); },
     'prs-ordered': (c) => { c.data.prs.reverse(); },
     'stats-derived': (c) => { c.data.stats.merged = 9; },
-    'svg-root': (c) => svg(c, 'dist/stats.svg', (s) => s.replace(' xmlns="http://www.w3.org/2000/svg"', '')),
-    'svg-wellformed': (c) => svg(c, 'dist/trajectory.svg', (s) => s.replace('</svg>', '<g></svg>')),
+    'svg-root': (c) => svg(c, pr(c).tile, (s) => s.replace(' xmlns="http://www.w3.org/2000/svg"', '')),
+    'svg-wellformed': (c) => svg(c, pr(c).tile, (s) => s.replace('</svg>', '<g></svg>')),
     'svg-size': (c) => svg(c, 'dist/header-light.svg', (s) => s.replace('</svg>', `<!-- ${'x'.repeat(151 * 1024)} --></svg>`)),
-    'readme-refs-resolve': (c) => md(c, (m) => m.replace('dist/trajectory.svg', 'dist/gone.svg')),
+    'readme-refs-resolve': (c) => md(c, (m) => m.replace(pr(c).tile, 'dist/gone.svg')),
     'readme-alts': (c) => md(c, (m) => m.replace(/ alt="[^"]*" width="420"/, ' width="420"')),
     'readme-html': (c) => md(c, (m) => m.replace('alt="nasa/fprime#1 open: fix 1"', 'alt="nasa/fprime#1 open: fix "1" <b>"')),
     'header-picture': (c) => md(c, (m) => m.replace(' width="100%">', '>')),
@@ -178,7 +178,6 @@ test('M1.T7a: every gate rule refuses its own break, and only that rule names it
     'readme-one-heading': (c) => md(c, (m) => m.replace('</picture></p>\n', '</picture></p>\n## About me\n')),
     'readme-tiles': (c) => md(c, (m) => m.replace(/<a href="[^"]+pull\/2"><img [^>]+><\/a>\n/, '')),
     'readme-cards-last': (c) => md(c, (m) => { const i = m.indexOf('## Open-source missions'), line = c.profile.intro.line.text; return m.slice(0, i).replace(line, m.slice(i) + line); }),
-    'readme-stats-alt': (c) => md(c, (m) => m.replace(/(<img src="dist\/stats\.svg" alt=")\d+/, '$199')),
   };
   assert.deepEqual(Object.keys(BREAKS).sort(), RULES.map((r) => r.id).sort(), 'one break per gate rule');
   const wrong = [];

@@ -11,7 +11,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const attr = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // the README markup for data.mjs's output; check.mjs compares the README against these, so it is defined once
-export const statsAlt = (s) => `${s.prs} PRs, ${s.merged} merged, ${s.repos} repos, ${s.orgs} orgs`;
 export const tileLink = (p) => `<a href="${attr(p.url)}"><img src="${attr(p.tile)}" alt="${attr(`${p.repo}#${p.number} ${p.state}: ${p.title}`)}" width="420"></a>`;
 // the themed header: [media, file] sources in order, then the light fallback; check.mjs requires the same
 export const HEADER_SOURCES = [
@@ -22,16 +21,12 @@ export const HEADER_SOURCES = [
 export const HEADER_FALLBACK = ['dist/header-light.svg', 'light'];
 export const MISSIONS = '## Open-source missions';
 
-// the open-source section: stat chips, the trajectory and one linked tile per PR, from data.mjs's data.json
+// the open-source section: one linked tile per PR, from data.mjs's data.json (tiles only, D22)
 function cards(data) {
   if (!data) return [];
-  const { stats, prs } = data;
+  const { prs } = data;
   return [
     MISSIONS,
-    '',
-    `<img src="dist/stats.svg" alt="${attr(statsAlt(stats))}">`,
-    '',
-    `<img src="dist/trajectory.svg" alt="${attr(`${stats.prs} open-source PRs over time`)}">`,
     '',
     ...prs.map(tileLink),
     ...(prs.length ? [''] : []),

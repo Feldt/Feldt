@@ -1,5 +1,5 @@
-// M1.T5 data: Feldt's public PRs from GitHub search, kept only for allowlisted orgs, become stat chips,
-// a trajectory graph and one mission tile per PR. A fetch error writes nothing.
+// M1.T5 data: Feldt's public PRs from GitHub search, kept only for allowlisted orgs, become data.json
+// and one mission tile per PR (tiles only, D22). A fetch error writes nothing.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -70,35 +70,29 @@ test('M1.T5: it searches public PRs by Feldt with the token, and keeps only allo
   assert.deepEqual(d.stats, { prs: 2, merged: 1, open: 1, repos: 2, orgs: 2 });
 });
 
-test('M1.T5: stat chips, trajectory and one mission tile per PR are valid SVGs carrying the data', async () => {
+test('M1.T5: one mission tile per PR, each a valid SVG carrying the data, and no stat chips or chart (D22)', async () => {
   const api = await fakeApi((u, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ total_count: ITEMS.length, incomplete_results: false, items: ITEMS })); });
   const out = tmp('data-');
   assert.equal((await data(out, api.url)).status, 0);
   api.server.close();
   const d = JSON.parse(readFileSync(join(out, 'data.json'), 'utf8'));
-  for (const f of ['dist/stats.svg', 'dist/trajectory.svg', ...d.prs.map((p) => p.tile)]) {
-    assert.deepEqual(svgProblems(join(out, f), f), [], f);
-  }
-  const stats = readFileSync(join(out, 'dist', 'stats.svg'), 'utf8');
-  assert.match(stats, />2<\/text>[\s\S]*PRs/);
-  assert.match(stats, />1<\/text>[\s\S]*merged/);
+  for (const f of d.prs.map((p) => p.tile)) assert.deepEqual(svgProblems(join(out, f), f), [], f);
+  assert.deepEqual(d.stats, { prs: 2, merged: 1, open: 1, repos: 2, orgs: 2 });
+  assert.ok(!existsSync(join(out, 'dist', 'stats.svg')) && !existsSync(join(out, 'dist', 'trajectory.svg')));
   const tile = readFileSync(join(out, d.prs[0].tile), 'utf8');
   assert.match(tile, /nasa\/fprime/);
   assert.match(tile, /#6134/);
   assert.match(tile, /Fix &lt;off-by-one&gt; &amp; overflow/);
   assert.match(readFileSync(join(out, d.prs[1].tile), 'utf8'), /merged/);
-  const traj = readFileSync(join(out, 'dist', 'trajectory.svg'), 'utf8');
-  assert.equal((traj.match(/<circle /g) || []).length, 2, 'one point per PR');
 });
 
-test('M1.T5: no PRs yet still renders chips, a trajectory and no tiles', async () => {
+test('M1.T5: no PRs yet writes data.json and no tiles', async () => {
   const api = await fakeApi((u, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"total_count":0,"incomplete_results":false,"items":[]}'); });
   const out = tmp('data-');
   assert.equal((await data(out, api.url)).status, 0);
   api.server.close();
   const d = JSON.parse(readFileSync(join(out, 'data.json'), 'utf8'));
   assert.deepEqual(d.prs, []);
-  for (const f of ['dist/stats.svg', 'dist/trajectory.svg']) assert.deepEqual(svgProblems(join(out, f), f), [], f);
   assert.ok(!existsSync(join(out, 'dist', 'mission')) || readdirSync(join(out, 'dist', 'mission')).length === 0);
 });
 
@@ -167,9 +161,11 @@ test('M1.T5a: a PR repeated across search pages and an issue in the results stil
   assert.deepEqual(tiles(out), ['nasa--fprime-5.svg']);
 });
 
-test('M1.T7: the same PRs draw the same trajectory an hour later, so the hourly Action commits only on change', async () => {
-  const { trajectorySvg } = await import('../scripts/data.mjs');
-  const prs = [{ repo: 'nasa/fprime', number: 5, state: 'open', created: '2026-10-19T21:00:00Z' }, { repo: 'NVIDIA/cutlass', number: 7, state: 'merged', created: '2026-10-19T21:05:00Z' }];
-  assert.equal(trajectorySvg(prs, new Date('2026-10-20T01:17:00Z')), trajectorySvg(prs, new Date('2026-10-20T02:17:00Z')));
-  assert.equal(trajectorySvg([], new Date('2026-10-20T01:17:00Z')), trajectorySvg([], new Date('2026-10-21T01:17:00Z')));
+test('M1.T7: the same PRs give byte-identical output on a later run, so the hourly Action commits only on change', async () => {
+  const items = paged(ITEMS);
+  const a = tmp('data-'), b = tmp('data-');
+  assert.equal((await dataWith(a, items)).status, 0);
+  await new Promise((ok) => setTimeout(ok, 1100));
+  assert.equal((await dataWith(b, items)).status, 0);
+  assert.deepEqual(snapshot(b), snapshot(a));
 });

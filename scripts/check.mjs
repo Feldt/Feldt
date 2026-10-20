@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 import { createHash } from 'node:crypto';
-import { attr, statsAlt, tileLink, renderFiles, HEADER_SOURCES, HEADER_FALLBACK, MISSIONS } from './render.mjs';
+import { attr, tileLink, renderFiles, HEADER_SOURCES, HEADER_FALLBACK, MISSIONS } from './render.mjs';
 import { QUERY, statsOf, tileOf, dataFiles, dataJson } from './data.mjs';
 import { THEMES, rgbOf, contrast } from './frames.mjs';
 
@@ -162,7 +162,6 @@ export const RULES = [
   { id: 'readme-one-heading', layer: 'output', test: (ctx) => bad(README(ctx).split('\n').filter((l) => /^\s*#/.test(l) && l !== MISSIONS), 'README headings other than the PR cards') },
   { id: 'readme-tiles', layer: 'output', test: (ctx) => { const md = README(ctx), p = prsOf(ctx); return p.every((x) => md.includes(tileLink(x))) && (md.match(/dist\/mission\//g) || []).length === p.length ? null : 'README does not show exactly one linked tile per PR'; } },
   { id: 'readme-cards-last', layer: 'output', test: (ctx) => { const md = README(ctx), m = md.indexOf(MISSIONS); return m < 0 || m > md.indexOf(ctx.profile?.intro?.line?.text) ? null : 'the PR cards are not after the intro line'; } },
-  { id: 'readme-stats-alt', layer: 'output', test: (ctx) => (!ctx.dataOk || README(ctx).includes(`alt="${attr(statsAlt(statsOf(ctx.data.prs)))}"`) ? null : 'the stat chips alt does not count the prs') },
 ];
 
 const read = (f) => (existsSync(f) ? readFileSync(f, 'utf8') : null);

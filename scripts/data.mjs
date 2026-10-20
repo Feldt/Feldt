@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// data.mjs --out <dir>: Feldt's public PRs -> <dir>/data.json, dist/stats.svg, dist/trajectory.svg and
+// data.mjs --out <dir>: Feldt's public PRs -> <dir>/data.json and
 // dist/mission/<org>--<repo>-<n>.svg (one tile per open or merged PR). Only PRs in pr-rules.json's orgs count;
 // closed-unmerged PRs don't show. Every fetch finishes before anything is written, so a failed or incomplete
 // search exits 1 and leaves the last good output alone. A good run replaces dist/mission whole, so a tile
@@ -55,35 +55,6 @@ export const statsOf = (prs) => ({
   repos: new Set(prs.map((p) => p.repo.toLowerCase())).size, orgs: new Set(prs.map((p) => p.org.toLowerCase())).size,
 });
 
-export function statsSvg(stats) {
-  const chips = [[stats.prs, 'PRs'], [stats.merged, 'merged'], [stats.repos, 'repos'], [stats.orgs, 'orgs']];
-  const w = 130, h = 64, W = chips.length * (w + 10) - 10;
-  const body = chips.map(([n, label], i) => {
-    const x = i * (w + 10);
-    return `<g transform="translate(${x} 0)"><rect width="${w}" height="${h}" rx="10" fill="${CARD.bg}" stroke="${CARD.border}"/>`
-      + `<text x="${w / 2}" y="32" text-anchor="middle" class="n">${n}</text><text x="${w / 2}" y="52" text-anchor="middle" class="l">${esc(label)}</text></g>`;
-  }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${h}" width="${W}" height="${h}" role="img" aria-label="${stats.prs} PRs, ${stats.merged} merged, ${stats.repos} repos, ${stats.orgs} orgs">`
-    + `<style>.n{font:700 24px ${FONT};fill:${CARD.accent}}.l{font:12px ${FONT};fill:${CARD.dim}}</style>${body}</svg>\n`;
-}
-
-// the x axis runs from the first PR to the last plus a margin, never to "now": the same PRs always draw the same
-// graph, so the hourly Action has nothing to commit until a PR opens, merges or closes
-export function trajectorySvg(prs) {
-  const W = 540, H = 120, pad = 28, DAY = 86400000;
-  const t0 = prs.length ? Date.parse(prs[0].created) : 0, last = prs.length ? Date.parse(prs.at(-1).created) : 0;
-  const t1 = last + Math.max(DAY, (last - t0) * 0.1);
-  const max = Math.max(prs.length, 1);
-  const x = (t) => +(pad + ((t - t0) / (t1 - t0)) * (W - 2 * pad)).toFixed(1), y = (n) => +(H - pad - (n / max) * (H - 2 * pad)).toFixed(1);
-  const pts = prs.map((p, i) => [x(Date.parse(p.created)), y(i + 1), p]);
-  const line = [[x(t0), y(0)], ...pts.flatMap(([px, py], i) => [[px, y(i)], [px, py]]), [x(t1), y(prs.length)]].map((p) => p.join(',')).join(' ');
-  const dots = pts.map(([px, py, p]) => `<circle cx="${px}" cy="${py}" r="4" fill="${p.state === 'merged' ? CARD.merged : CARD.open}"><title>${esc(`${p.repo}#${p.number}`)}</title></circle>`).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${prs.length} open-source PRs over time">`
-    + `<style>.t{font:12px ${FONT};fill:${CARD.dim}}</style><rect width="${W}" height="${H}" rx="10" fill="${CARD.bg}" stroke="${CARD.border}"/>`
-    + `<text x="${pad}" y="20" class="t">open-source PRs over time: ${prs.length}</text>`
-    + `<polyline points="${line}" fill="none" stroke="${CARD.accent}" stroke-width="2"/>${dots}</svg>\n`;
-}
-
 export function tileSvg(p) {
   const W = 420, H = 92, title = p.title.length > 52 ? `${p.title.slice(0, 51)}…` : p.title;
   const colour = p.state === 'merged' ? CARD.merged : CARD.open;
@@ -97,7 +68,7 @@ export function tileSvg(p) {
 
 // Every file data.mjs publishes besides data.json, as { path: body }; check.mjs re-runs it on data.json.
 export const dataFiles = ({ prs, stats }) => ({
-  'dist/stats.svg': statsSvg(stats), 'dist/trajectory.svg': trajectorySvg(prs), ...Object.fromEntries(prs.map((p) => [p.tile, tileSvg(p)])),
+  ...Object.fromEntries(prs.map((p) => [p.tile, tileSvg(p)])),
 });
 export const dataJson = ({ prs, stats }) => JSON.stringify({ query: QUERY, stats, prs }, null, 1) + '\n';
 
@@ -112,7 +83,7 @@ export async function build(out, opts = {}) {
   writeFileSync(join(stage, 'data.json'), dataJson({ prs, stats }));
   mkdirSync(join(out, 'dist'), { recursive: true });
   if (existsSync(join(out, 'dist', 'mission'))) renameSync(join(out, 'dist', 'mission'), old);
-  for (const f of ['dist/mission', 'dist/stats.svg', 'dist/trajectory.svg', 'data.json']) renameSync(join(stage, f), join(out, f));
+  for (const f of ['dist/mission', 'data.json']) renameSync(join(stage, f), join(out, f));
   for (const d of [stage, old]) rmSync(d, { recursive: true, force: true });
   return { prs, stats };
 }
