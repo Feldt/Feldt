@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // render.mjs --out <dir>: profile.json -> <dir>/dist/*.svg + <dir>/README.md. No dependencies, deterministic.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+// When <dir>/data.json exists (data.mjs ran first, as in the Action), the README adds the PR cards it wrote.
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildLoop, loopSvg } from './frames.mjs';
@@ -8,6 +9,22 @@ import { buildLoop, loopSvg } from './frames.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const attr = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// the open-source section: stat chips, the trajectory and one linked tile per PR, from data.mjs's data.json
+function cards(file) {
+  if (!existsSync(file)) return [];
+  const { stats, prs } = JSON.parse(readFileSync(file, 'utf8'));
+  return [
+    '## Open-source missions',
+    '',
+    `<img src="dist/stats.svg" alt="${attr(`${stats.prs} PRs, ${stats.merged} merged, ${stats.repos} repos, ${stats.orgs} orgs`)}">`,
+    '',
+    `<img src="dist/trajectory.svg" alt="${attr(`${stats.prs} open-source PRs over time`)}">`,
+    '',
+    ...prs.map((p) => `<a href="${attr(p.url)}"><img src="${attr(p.tile)}" alt="${attr(`${p.repo}#${p.number} ${p.state}: ${p.title}`)}" width="420"></a>`),
+    ...(prs.length ? [''] : []),
+  ];
+}
 
 export function render(out, profile = JSON.parse(readFileSync(join(ROOT, 'profile.json'), 'utf8'))) {
   const dist = join(out, 'dist');
@@ -28,6 +45,13 @@ export function render(out, profile = JSON.parse(readFileSync(join(ROOT, 'profil
     `<img src="dist/header-light.svg" alt="${alt}" width="100%">`,
     '</picture></p>',
     '',
+    `## ${profile.intro.heading}`,
+    '',
+    profile.intro.line.text,
+    '',
+    ...profile.intro.facts.map((f) => `- ${f.text}`),
+    '',
+    ...cards(join(out, 'data.json')),
   ].join('\n');
   for (const [p, body] of Object.entries(files)) writeFileSync(join(out, p), body);
   return Object.keys(files);

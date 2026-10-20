@@ -5,11 +5,36 @@
       "url": "https://getskybuds.com/cdn/pdp-ash-plush-900.webp",
       "file": "assets/bud/ash-plush-480.png",
       "sha256": "93e41a1ea466ded983e7087c171abe4e8a6f235d709d626581550f5d38fa9dae",
-      "note": "Downscaled with sips from the public product image; \u00a9 SkyBuds, not licensed for reuse."
+      "note": "Downscaled with sips from the public product image; © SkyBuds, not licensed for reuse."
     },
     "animation": "2d-warp"
   },
   "header": {
     "tagline": "I build SkyBuds: plush friends kids talk with"
+  },
+  "intro": {
+    "heading": "SkyBuds: talk time, not screen time",
+    "line": {
+      "text": "I build [SkyBuds](https://getskybuds.com): screen-free AI companion plush toys for kids ages 3 to 10.",
+      "source": "https://getskybuds.com/"
+    },
+    "facts": [
+      {
+        "text": "Just say “Hey SkyBud” and start talking: jokes, big questions and more than 75 languages.",
+        "source": "https://getskybuds.com/"
+      },
+      {
+        "text": "It answers, then asks one back, and adapts its language and topics to the child’s age.",
+        "source": "https://getskybuds.com/"
+      },
+      {
+        "text": "Bedtime stories made just for them, and a brushing song of its own.",
+        "source": "https://getskybuds.com/"
+      },
+      {
+        "text": "No camera, no screen, no ads. kidSAFE Listed, and we don’t sell kids’ data.",
+        "source": "https://getskybuds.com/"
+      }
+    ]
   }
 }
