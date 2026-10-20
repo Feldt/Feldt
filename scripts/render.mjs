@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 // render.mjs --out <dir>: profile.json + the Bud renders it pins -> <dir>/dist/*.svg + <dir>/README.md. No dependencies, deterministic.
-// When <dir>/data.json exists (data.mjs ran first, as in the Action), the README adds the PR cards it wrote.
+// The README never shows data.json's PRs (no PR tiles, Fred 10-20); data.mjs still writes the tile files.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { buildBanner } from './banner/banner.mjs';
-import { W as TILE_W } from './tiles/tiles.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -22,10 +21,6 @@ export function budInputs(profile) {
 
 export const attr = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// the README markup for data.mjs's output; check.mjs compares the README against these, so it is defined once.
-// One linked tile per line: GitHub joins the lines with a space, so two 408 px tiles share a row in the ~838 px
-// desktop column, and on a phone each shrinks to the column (max-width: 100%), one per row.
-export const tileLink = (p) => `<a href="${attr(p.url)}"><img src="${attr(p.tile)}" alt="${attr(`${p.repo}#${p.number} ${p.state}: ${p.title}`)}" width="${TILE_W}"></a>`;
 // the banner: one scene for both colour schemes (it has its own sky and rounded corners), the phone crop under
 // 600 px; reduced motion is the SVG's own media query. check.mjs requires exactly this <picture>.
 export const BANNER_PHONE = 'dist/banner-phone.svg', BANNER_DESKTOP = 'dist/banner-desktop.svg';
@@ -36,13 +31,6 @@ export const BANNER_PICTURE = [
   `<img src="${BANNER_DESKTOP}" alt="${attr(BANNER_ALT)}" width="100%">`,
   '</picture></p>',
 ];
-
-// the open-source section: one linked tile per PR, from data.mjs's data.json (tiles only, D22; no heading: the
-// tiles say what they are)
-function cards(data) {
-  if (!data || !data.prs.length) return [];
-  return [...data.prs.map(tileLink), ''];
-}
 
 // Every file render publishes, as { path: body }, from profile.json and data.json (null before data.mjs has run).
 // check.mjs re-runs this and requires the published bytes to match, so nothing else can be published.
@@ -55,7 +43,6 @@ export function renderFiles(profile, data) {
     profile.intro.line.text,
     '',
     ...(profile.intro.facts.length ? [...profile.intro.facts.map((f) => `- ${f.text}`), ''] : []),
-    ...cards(data),
   ].join('\n');
   return files;
 }

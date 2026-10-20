@@ -6,7 +6,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-import { tileLink, renderFiles, budInputs, BANNER_PICTURE, BANNER_PHONE, BANNER_DESKTOP } from './render.mjs';
+import { renderFiles, budInputs, BANNER_PICTURE, BANNER_PHONE, BANNER_DESKTOP } from './render.mjs';
 import { unrle } from './tiles/lib/logo.mjs';
 import { QUERY, statsOf, tileOf, dataFiles, dataJson } from './data.mjs';
 import { BUDS } from './banner/buds.mjs';
@@ -142,7 +142,7 @@ export const RULES = [
   { id: 'profile-facts-sourced', layer: 'profile', test: (ctx) => bad((ctx.profile?.intro?.facts || []).filter((f) => !/^https:\/\//.test(f.source)).map((f) => f.text), 'facts without an https source') },
   { id: 'profile-facts-plain', layer: 'profile', test: (ctx) => bad((ctx.profile?.intro?.facts || []).filter((f) => !plain(f.text)).map((f) => f.text), 'facts that are not one plain line') },
   { id: 'profile-brand-only', layer: 'profile', test: (ctx) => (LEGAL.test(JSON.stringify(ctx.profile?.intro)) ? 'a legal entity name in the profile copy (brand name only)' : null) },
-  // data.json (absent before data.mjs has run; then the README has no cards)
+  // data.json (absent before data.mjs has run)
   { id: 'data-shape', layer: 'data', test: (ctx) => (!ctx.data || ctx.dataOk ? null : 'data.json keys or types are not the known shape') },
   { id: 'data-canonical', layer: 'data', test: (ctx) => (!ctx.dataOk || ctx.dataRaw === dataJson(ctx.data) ? null : 'data.json is not as data.mjs writes it') },
   { id: 'data-query', layer: 'data', test: (ctx) => (!ctx.dataOk || ctx.data.query === QUERY ? null : `data.json query is not ${QUERY}`) },
@@ -172,8 +172,8 @@ export const RULES = [
   { id: 'banner-reduced-motion', layer: 'output', test: (ctx) => bad(banners(ctx).filter(([, b]) => !/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\*\s*\{\s*animation:\s*none\s*!important/.test(b)).map(([f]) => f), 'banners that keep moving under prefers-reduced-motion') },
   { id: 'readme-line-first', layer: 'output', test: (ctx) => (introLines(README(ctx)).find((l) => l.trim()) === ctx.profile?.intro?.line?.text ? null : "the first line under the banner is not profile.json's line") },
   { id: 'readme-one-heading', layer: 'output', test: (ctx) => bad(README(ctx).split('\n').filter((l) => /^\s*#/.test(l)), 'README headings (the tiles need none)') },
-  { id: 'readme-tiles', layer: 'output', test: (ctx) => { const md = README(ctx), p = prsOf(ctx); return p.every((x) => md.includes(tileLink(x))) && (md.match(/dist\/mission\//g) || []).length === p.length ? null : 'README does not show exactly one linked tile per PR'; } },
-  { id: 'readme-cards-last', layer: 'output', test: (ctx) => { const md = README(ctx), m = md.search(/^<a href="[^"]*"><img src="dist\/mission\//m); return m < 0 || m > md.indexOf(ctx.profile?.intro?.line?.text) ? null : 'the PR cards are not after the intro line'; } },
+  // no PR tiles on the profile (Fred 10-20): the README ends at the intro line and its facts
+  { id: 'readme-no-tiles', layer: 'output', test: (ctx) => (/dist\/mission\//.test(README(ctx)) ? 'README shows PR tiles (Fred 10-20: none)' : null) },
 ];
 
 const read = (f) => (existsSync(f) ? readFileSync(f, 'utf8') : null);
