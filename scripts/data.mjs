@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // data.mjs --out <dir>: Feldt's public PRs -> <dir>/data.json, dist/stats.svg, dist/trajectory.svg and
-// dist/mission/<org>-<repo>-<n>.svg (one tile per open or merged PR). Only PRs in pr-rules.json's orgs count;
+// dist/mission/<org>--<repo>-<n>.svg (one tile per open or merged PR). Only PRs in pr-rules.json's orgs count;
 // closed-unmerged PRs don't show. Every fetch finishes before anything is written, so a failed or incomplete
-// search exits 1 and leaves the last good output alone.
+// search exits 1 and leaves the last good output alone. A good run replaces dist/mission whole, so a tile
+// whose PR closed unmerged or left the allowlist goes away.
 // Env: GITHUB_TOKEN (the Action's), GITHUB_API_URL (default https://api.github.com).
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -40,7 +41,8 @@ export function shape(items, orgs) {
     })
     .filter((p) => allow.has(p.org.toLowerCase()) && p.state !== 'closed')
     .sort((a, b) => a.created.localeCompare(b.created) || a.url.localeCompare(b.url))
-    .map((p) => ({ ...p, tile: `dist/mission/${p.repo.replace('/', '-').toLowerCase()}-${p.number}.svg` }));
+    // GitHub owner names never hold "--", so owner--repo can't collide (google/deepmind-lab vs google-deepmind/lab)
+    .map((p) => ({ ...p, tile: `dist/mission/${p.repo.replace('/', '--').toLowerCase()}-${p.number}.svg` }));
   const stats = {
     prs: prs.length, merged: prs.filter((p) => p.state === 'merged').length, open: prs.filter((p) => p.state === 'open').length,
     repos: new Set(prs.map((p) => p.repo.toLowerCase())).size, orgs: new Set(prs.map((p) => p.org.toLowerCase())).size,
@@ -88,11 +90,18 @@ export function tileSvg(p) {
 export async function build(out, opts = {}) {
   const orgs = JSON.parse(readFileSync(join(ROOT, 'pr-rules.json'), 'utf8')).orgs;
   const { prs, stats } = shape(await fetchPrs(opts), orgs); // throws before anything is written
-  mkdirSync(join(out, 'dist', 'mission'), { recursive: true });
-  writeFileSync(join(out, 'dist', 'stats.svg'), statsSvg(stats));
-  writeFileSync(join(out, 'dist', 'trajectory.svg'), trajectorySvg(prs, opts.now));
-  for (const p of prs) writeFileSync(join(out, p.tile), tileSvg(p));
-  writeFileSync(join(out, 'data.json'), JSON.stringify({ query: QUERY, stats, prs }, null, 1) + '\n');
+  // render into a staging folder, then move it in: the mission folder is replaced whole, never merged
+  const stage = join(out, '.data-new'), old = join(out, '.data-old');
+  for (const d of [stage, old]) rmSync(d, { recursive: true, force: true });
+  mkdirSync(join(stage, 'dist', 'mission'), { recursive: true });
+  writeFileSync(join(stage, 'dist', 'stats.svg'), statsSvg(stats));
+  writeFileSync(join(stage, 'dist', 'trajectory.svg'), trajectorySvg(prs, opts.now));
+  for (const p of prs) writeFileSync(join(stage, p.tile), tileSvg(p));
+  writeFileSync(join(stage, 'data.json'), JSON.stringify({ query: QUERY, stats, prs }, null, 1) + '\n');
+  mkdirSync(join(out, 'dist'), { recursive: true });
+  if (existsSync(join(out, 'dist', 'mission'))) renameSync(join(out, 'dist', 'mission'), old);
+  for (const f of ['dist/mission', 'dist/stats.svg', 'dist/trajectory.svg', 'data.json']) renameSync(join(stage, f), join(out, f));
+  for (const d of [stage, old]) rmSync(d, { recursive: true, force: true });
   return { prs, stats };
 }
 
