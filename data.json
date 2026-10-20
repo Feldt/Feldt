@@ -1,11 +1,11 @@
 {
  "query": "is:pr is:public author:Feldt",
  "stats": {
-  "prs": 3,
+  "prs": 4,
   "merged": 0,
-  "open": 3,
-  "repos": 3,
-  "orgs": 3
+  "open": 4,
+  "repos": 4,
+  "orgs": 4
  },
  "prs": [
   {
@@ -40,6 +40,82 @@
    "created": "2026-10-20T02:46:46Z",
    "merged": null,
    "tile": "dist/mission/neuralinkcorp--datarepo-84.svg"
+  },
+  {
+   "repo": "NASA-AMMOS/3DTilesRendererJS",
+   "org": "NASA-AMMOS",
+   "number": 1773,
+   "title": "BatchTable: Fix getDataFromId for VEC2, VEC3, VEC4 binary properties",
+   "url": "https://github.com/NASA-AMMOS/3DTilesRendererJS/pull/1773",
+   "state": "open",
+   "created": "2026-10-20T04:16:20Z",
+   "merged": null,
+   "tile": "dist/mission/nasa-ammos--3dtilesrendererjs-1773.svg"
   }
- ]
+ ],
+ "logos": {
+  "nasa-ammos": {
+   "n": 64,
+   "bleed": true,
+   "pal": [
+    "#000000",
+    "#d2ba6e",
+    "#463e25",
+    "#8c7c4a",
+    "#b5a05f",
+    "#262214",
+    "#95844e",
+    "#74673d",
+    "#4f462a",
+    "#796b3f"
+   ],
+   "px": "a1373cdca61dbda48cdca10db2ca47dbda10db2ca3c2a42eb2ca8ceb2ca3dbca40cb3ca3c2a3cb3da2cb2ga35c2a3cb3da2cb2ca2cb4a2cb3fa33cbda3db4cadb2ca2dbdb2fadb3ca4c2d2ca4cdhia16db2ca2jbdebc2b3da2dbhb2cadb3da3cdb4ca2cb4da14cb3ca2dbcdbdcb3da2b2cdbc2b2dbda3dbdcdb2c2b2dhd2a14cb3dafb2fcb4gb2acbecdbdcbdcb2cacbda3hbdcb2ca17dbebdacb2aceb3cdbc2bdacbd2bdadbcadbda3cbdcdb2c2a14cebcb2c2bda2jb2dadbcdbdacb4cadbdadbca3cbec2eb3ca13cbdagbcdbda2cb2cacbgdbda2b4cacbdagbca3fb2ca2cdb2ca12gbdadbgdbca2cdha2cb2ebia2db3a2cb2cdbda3cbda4fdbca11cb2cacb4ca8b4ca2hb2da3dbc2becafdbdac2acdbca11cbda3db3a9db2da3cb2ca3dbgadb2db2dacb2db2da12cgca3db2da9cb2da3fb2ca3cdca2db3dfa2hb3dca18cb2ca9cb2da4c2a11c2a6cfa20cb2ca10b2ca48d2a11d2ca1443"
+  },
+  "neuralink": {
+   "n": 64,
+   "bleed": true,
+   "pal": [
+    "#ffffff",
+    "#2b2728",
+    "#716f6f",
+    "#b8b7b7"
+   ],
+   "px": "a1116d2cda15d2a3d3a36cb4cda13cbda2cbda34db3c2b3ca12cb2dacbda33db2ca4db2da11cb2cacbda32db2ca6cbca11cbcbdcbda32b2ca7db2a11cbdbc2bda30db2ca9b2a11cbadb3da29db2ca10cbda10cba2cb2da28db2ca11cbda10cba2db2da27db2ca12dbda10cba3cbda26db2ca13dbca43cb2da14dbca42cb2da16b2a41db2da17b2a40cb2da18b2a39cb2da19cbda37cb2da20cbda36db2da21dbda35cb3c20a2dbca2c14a18cb24a3bca2cb12a47b2a10db3a48b2da9cb2da48b2da8cb2da49cbca7cb2da50cbca6cb2da51dbca5cb2da52db2a4cb2da54b2a3cb2da55b2cdcb2da56db5da59c3da1045"
+  },
+  "neuralinkcorp": {
+   "n": 64,
+   "bleed": true,
+   "pal": [
+    "#ffffff",
+    "#282526",
+    "#706d6e",
+    "#b7b6b7"
+   ],
+   "px": "a1116d2cda15d2a3d3a36cb4ca14cbda2cbda34db3c2b3ca12cb2dacbda33db2ca4db2da11cb2cacbda32db2ca6cbca11cbcbdcbda32b2ca7db2a11cbdbc2bda30db2ca9b2a11cbadb3da29db2ca10cbda10cba2cb2da28db2ca11cbda10cba2db2da27db2ca12dbda10cba3cbda26cb2ca13dbca43db2da15bca42cb2da16b2a41db2da17b2a40cb2da18b2a39cb2da19cbda37cb2da20cbda36db2da21dbda35cb3c20a2dbca2c14a18cb24a2dbca2cb12a47b2a11b3a48b2da9cb2da48cbda8cb2da49cbca7cb2a51dbca6cb2da51dbca5cb2da52db2a4cb2da54b2a3db2da55b2cdcb2da56db5da59c3da1045"
+  },
+  "teslamotors": {
+   "n": 64,
+   "bleed": true,
+   "pal": [
+    "#d41e16",
+    "#ffffff",
+    "#f1b4b1",
+    "#e26964",
+    "#f3afad",
+    "#e03e38",
+    "#d82822",
+    "#ed8985",
+    "#dc332d",
+    "#e14d47",
+    "#e46560",
+    "#e7645f",
+    "#e97f7b",
+    "#f9d7d5",
+    "#f7cac8",
+    "#f3b0ad",
+    "#e34b45"
+   ],
+   "px": "a112ga124ga124ga111if3qj2f3i2aga44fjkmecnb10c2ehlfia35gfmecb24cehfa28ikeb13c2o3c3b13eja23leb9phlfga7ga4ijkmob9mfa18lb7pkfigfjkhepla8me2hljiaijhcb6ca17fb4pkfafkecb7iaga4jb7chlfajhcb3ca18ebefgfhcb11ea5fnb11ekigdcbda20ieb16ea3fb16cda22jb19ha2cb18ca22hb8ce4b6leb5cececnb8da23eb5hfga4eb12ka4idcb5da24ghb3ka3ga3mb12fa7cb2cda28hba8lb12a9cda33ga6fb11ca52b11ca41ga10cb10da52eb10ja38ga13kb10a53fb9ca36ga17b9ca34ga19cb8da33ga20cb8da54db8a31ga24b8a29ga26b7ca56b7ca56cb6da56cb6da56db6a57db5na58b5ca58cb4da58cb4da58db4da58db3na60b3ca60cb2da60cb2da60db2da60db2a62b2a62bca62bca62cda62cda62da672"
+  }
+ }
 }
