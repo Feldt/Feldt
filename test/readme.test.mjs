@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmp, run } from './helpers.mjs';
@@ -81,6 +81,20 @@ test('Fred 10-20: with PRs in data.json the README ends with one small badge per
   assert.deepEqual(links.map((m) => m[4]), ['Merged PR stripe/stripe-node#9: Keep key order', 'Open PR cloudflare/workerd#6134: Fix &lt;off-by-one&gt; &amp; &quot;overflow&quot;']);
   for (const m of links) for (const f of [m[2], m[3]]) assert.ok(existsSync(join(out, f)), `${f} rendered`);
   assert.ok(!/^#/m.test(md), 'no heading');
+  const r = check(out);
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test('Fred 10-20: a rerun after a PR leaves the allowlist drops its old badge files, so check passes on the new render', async () => {
+  const out = tmp('readme-');
+  await withData(out, [pr('cloudflare/workerd', 7858, 'open', null, '2026-10-20T20:44:58Z', 'Fix Duplex.from()')]);
+  mkdirSync(join(out, 'dist', 'badges'), { recursive: true });
+  for (const t of ['light', 'dark']) writeFileSync(join(out, 'dist', 'badges', `nasa-ammos--mmgis-1133-${t}.svg`), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  writeFileSync(join(out, 'notes.txt'), 'not published');
+  assert.equal(render(out).status, 0);
+  for (const f of ['dist/badges/nasa-ammos--mmgis-1133-light.svg', 'dist/badges/nasa-ammos--mmgis-1133-dark.svg']) assert.ok(!existsSync(join(out, f)), `${f} dropped`);
+  assert.ok(existsSync(join(out, 'dist', 'badges', 'cloudflare--workerd-7858-light.svg')), 'the current badge is kept');
+  assert.ok(existsSync(join(out, 'notes.txt')), 'files outside dist/badges/ are left alone');
   const r = check(out);
   assert.equal(r.status, 0, r.stderr);
 });

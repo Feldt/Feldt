@@ -2,7 +2,7 @@
 // render.mjs --out <dir>: profile.json + the Bud renders it pins -> <dir>/dist/*.svg + <dir>/README.md. No dependencies, deterministic.
 // No PR tiles on the README (Fred 10-20); data.mjs still writes the tile files. Each PR in data.json gets one small
 // badge instead, in a row under the intro (Fred 10-20: "small badges for the open PRs"), drawn by badges.mjs.
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -54,6 +54,9 @@ export function render(out, profile = JSON.parse(readFileSync(join(ROOT, 'profil
   const dataFile = join(out, 'data.json');
   const files = renderFiles(profile, existsSync(dataFile) ? JSON.parse(readFileSync(dataFile, 'utf8')) : null);
   for (const [p, body] of Object.entries(files)) { mkdirSync(dirname(join(out, p)), { recursive: true }); writeFileSync(join(out, p), body); }
+  // dist/badges/ holds only this render's badges: drop what an earlier one left (a PR that left the allowlist), or check refuses it
+  const badges = join(out, 'dist', 'badges');
+  if (existsSync(badges)) for (const f of readdirSync(badges)) if (!(`dist/badges/${f}` in files)) rmSync(join(badges, f));
   return Object.keys(files);
 }
 
