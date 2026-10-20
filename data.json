@@ -1,0 +1,34 @@
+{
+ "query": "is:pr is:public author:Feldt",
+ "stats": {
+  "prs": 2,
+  "merged": 0,
+  "open": 2,
+  "repos": 2,
+  "orgs": 2
+ },
+ "prs": [
+  {
+   "repo": "teslamotors/kafka-helmsman",
+   "org": "teslamotors",
+   "number": 97,
+   "title": "Topic enforcer: don't try to decrease partition counts",
+   "url": "https://github.com/teslamotors/kafka-helmsman/pull/97",
+   "state": "open",
+   "created": "2026-10-20T02:13:15Z",
+   "merged": null,
+   "tile": "dist/mission/teslamotors--kafka-helmsman-97.svg"
+  },
+  {
+   "repo": "neuralink/tsui",
+   "org": "neuralink",
+   "number": 38,
+   "title": "Fix machine details preview overflowing an 80 column terminal",
+   "url": "https://github.com/neuralink/tsui/pull/38",
+   "state": "open",
+   "created": "2026-10-20T02:13:17Z",
+   "merged": null,
+   "tile": "dist/mission/neuralink--tsui-38.svg"
+  }
+ ]
+}
