@@ -4,7 +4,6 @@
  "scripts/banner/quant.mjs": [],
  "scripts/banner/color.mjs": [],
  "scripts/check.mjs": [
-  "(anonymous)|&& Array.isArray(p.intro.facts) && p.intro.facts.every((f) => keysOf(f || {}) === 'source,text' && isStr(f.text) && isStr(f.source));",
   "(anonymous)|{ id: 'prs-ordered', layer: 'data', test: (ctx) => { const p = prsOf(ctx); return p.every((x, i) => i === 0 || p[i - 1].created.localeCompare(x.created) < 0 || (p[i - 1].created === x.created && p[i - 1].url.localeCompare(x.url) < 0)) ? null : 'PRs are not in created order'; } },",
   "<module>|if (!dir) { console.error('usage: check.mjs <dir>'); process.exit(2); }",
   "context|catch (e) { ctx.renderError = e.message; }",
@@ -30,8 +29,7 @@
  ],
  "scripts/render.mjs": [
   "<module>|const args = process.argv.slice(2), out = args.includes('--out') ? args[args.indexOf('--out') + 1] : null;",
-  "<module>|if (!out) { console.error('usage: render.mjs --out <dir>'); process.exit(2); }",
-  "renderFiles|...(profile.intro.facts.length ? [...profile.intro.facts.map((f) => `- ${f.text}`), ''] : []),"
+  "<module>|if (!out) { console.error('usage: render.mjs --out <dir>'); process.exit(2); }"
  ],
  "scripts/banner/banner.mjs": [],
  "scripts/banner/buds.mjs": [],
