@@ -101,3 +101,55 @@ test('M1.T5: no PRs yet still renders chips, a trajectory and no tiles', async (
   for (const f of ['dist/stats.svg', 'dist/trajectory.svg']) assert.deepEqual(svgProblems(join(out, f), f), [], f);
   assert.ok(!existsSync(join(out, 'dist', 'mission')) || readdirSync(join(out, 'dist', 'mission')).length === 0);
 });
+
+// one fake API that serves `items` in pages of 100, like api.github.com
+const paged = (items, fail = () => false) => (u, res) => {
+  const page = Number(u.searchParams.get('page') || 1);
+  if (fail(page)) { res.writeHead(502); res.end('bad gateway'); return; }
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ total_count: items.length, incomplete_results: false, items: items.slice((page - 1) * 100, page * 100) }));
+};
+async function dataWith(out, handler) {
+  const api = await fakeApi(handler);
+  const r = await data(out, api.url);
+  api.server.close();
+  return r;
+}
+const tiles = (out) => (existsSync(join(out, 'dist', 'mission')) ? readdirSync(join(out, 'dist', 'mission')).sort() : []);
+const snapshot = (out) => Object.fromEntries(files(out).filter((f) => f.endsWith('.svg') || f.endsWith('.json')).map((f) => [f, readFileSync(join(out, f), 'utf8')]));
+
+test('M1.T5 r2: a rerun into the same folder drops tiles of PRs that closed unmerged or left the allowlist', async () => {
+  const out = tmp('data-');
+  const first = [pr('nasa/fprime', 5, 'open', null, '2026-10-19T21:00:00Z', 'a'), pr('NVIDIA/cutlass', 7, 'open', null, '2026-10-19T22:00:00Z', 'b')];
+  assert.equal((await dataWith(out, paged(first))).status, 0);
+  assert.equal(tiles(out).length, 2);
+  const second = [pr('nasa/fprime', 5, 'closed', null, '2026-10-19T21:00:00Z', 'a'), pr('NVIDIA/cutlass', 7, 'open', null, '2026-10-19T22:00:00Z', 'b')];
+  assert.equal((await dataWith(out, paged(second))).status, 0);
+  const d = JSON.parse(readFileSync(join(out, 'data.json'), 'utf8'));
+  assert.deepEqual(tiles(out), d.prs.map((p) => p.tile.split('/').pop()).sort(), 'tiles on disk are exactly the PRs in data.json');
+  assert.equal(tiles(out).length, d.stats.prs);
+});
+
+test('M1.T5 r2: two allowlisted repos whose names join the same way still get one tile each', async () => {
+  const out = tmp('data-');
+  const items = [pr('google/deepmind-lab', 1, 'open', null, '2026-10-19T21:00:00Z', 'a'), pr('google-deepmind/lab', 1, 'open', null, '2026-10-19T22:00:00Z', 'b')];
+  assert.equal((await dataWith(out, paged(items))).status, 0);
+  const d = JSON.parse(readFileSync(join(out, 'data.json'), 'utf8'));
+  assert.equal(new Set(d.prs.map((p) => p.tile)).size, 2, d.prs.map((p) => p.tile).join(' '));
+  assert.equal(tiles(out).length, 2);
+});
+
+test('M1.T5 r2: every page is fetched, and a failure on any page or a malformed body leaves the last good output untouched', async () => {
+  const out = tmp('data-');
+  const many = Array.from({ length: 150 }, (_, i) => pr('nasa/fprime', i + 1, 'open', null, `2026-10-19T${String(10 + Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00Z`, `pr ${i + 1}`));
+  assert.equal((await dataWith(out, paged(many))).status, 0);
+  assert.equal(JSON.parse(readFileSync(join(out, 'data.json'), 'utf8')).stats.prs, 150, 'both pages counted');
+  assert.equal(tiles(out).length, 150);
+  const good = snapshot(out);
+  const fresh = [...many, pr('nasa/fprime', 999, 'open', null, '2026-10-20T00:00:00Z', 'new')];
+  for (const bad of [paged(fresh, (p) => p === 2), (u, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"items": [ not json'); }]) {
+    const r = await dataWith(out, bad);
+    assert.equal(r.status, 1, r.stderr);
+    assert.deepEqual(snapshot(out), good, 'last good output unchanged');
+  }
+});
