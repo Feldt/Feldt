@@ -2,8 +2,8 @@
  "query": "is:pr is:public author:Feldt",
  "stats": {
   "prs": 4,
-  "merged": 0,
-  "open": 4,
+  "merged": 1,
+  "open": 3,
   "repos": 3,
   "orgs": 2
  },
@@ -47,9 +47,9 @@
    "number": 344,
    "title": "Make empty ^=, $= and ~= attribute selectors match nothing",
    "url": "https://github.com/cloudflare/lol-html/pull/344",
-   "state": "open",
+   "state": "merged",
    "created": "2026-10-20T22:56:27Z",
-   "merged": null,
+   "merged": "2026-10-27T16:50:47Z",
    "tile": "dist/mission/cloudflare--lol-html-344.svg"
   }
  ],
